@@ -21,8 +21,8 @@ use base64::Engine;
 use crate::json::{self, ParseError, Value};
 
 const KEY: [u8; 32] = [
-    0xa7, 0xca, 0x9f, 0x33, 0x66, 0xd8, 0x92, 0xc2, 0xf0, 0xbe, 0xf4, 0x17, 0x34, 0x1c, 0xa9, 0x71, 0xb6, 0x9a, 0xe9,
-    0xf7, 0xba, 0xcc, 0xcf, 0xfc, 0xf4, 0x3c, 0x62, 0xd1, 0xd7, 0xd0, 0x21, 0xf9,
+    0xa7, 0xca, 0x9f, 0x33, 0x66, 0xd8, 0x92, 0xc2, 0xf0, 0xbe, 0xf4, 0x17, 0x34, 0x1c, 0xa9, 0x71,
+    0xb6, 0x9a, 0xe9, 0xf7, 0xba, 0xcc, 0xcf, 0xfc, 0xf4, 0x3c, 0x62, 0xd1, 0xd7, 0xd0, 0x21, 0xf9,
 ];
 const IV: [u8; 16] = *b"tu89geji340t89u2";
 
@@ -78,7 +78,9 @@ pub fn decrypt_text(file: &[u8]) -> Result<String, FormatError> {
     if trimmed.is_empty() {
         return Err(FormatError::Empty);
     }
-    let bytes = base64::engine::general_purpose::STANDARD.decode(trimmed).map_err(|_| FormatError::NotBase64)?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(trimmed)
+        .map_err(|_| FormatError::NotBase64)?;
     if bytes.is_empty() || bytes.len() % 16 != 0 {
         return Err(FormatError::BadLength);
     }
@@ -89,7 +91,8 @@ pub fn decrypt_text(file: &[u8]) -> Result<String, FormatError> {
 }
 
 pub fn encrypt_text(json_text: &str) -> String {
-    let cipher = Enc::new(&KEY.into(), &IV.into()).encrypt_padded_vec_mut::<Pkcs7>(json_text.as_bytes());
+    let cipher =
+        Enc::new(&KEY.into(), &IV.into()).encrypt_padded_vec_mut::<Pkcs7>(json_text.as_bytes());
     base64::engine::general_purpose::STANDARD.encode(cipher)
 }
 
@@ -131,8 +134,14 @@ pub fn looks_like_json(file: &[u8]) -> bool {
 }
 
 fn trim_ascii(b: &[u8]) -> &[u8] {
-    let start = b.iter().position(|c| !c.is_ascii_whitespace()).unwrap_or(b.len());
-    let end = b.iter().rposition(|c| !c.is_ascii_whitespace()).map_or(start, |p| p + 1);
+    let start = b
+        .iter()
+        .position(|c| !c.is_ascii_whitespace())
+        .unwrap_or(b.len());
+    let end = b
+        .iter()
+        .rposition(|c| !c.is_ascii_whitespace())
+        .map_or(start, |p| p + 1);
     &b[start..end]
 }
 
@@ -143,21 +152,43 @@ mod tests {
     #[test]
     fn test_vector() {
         assert_eq!(encrypt_text(r#"{"a":1}"#), "u9bcSUF3rVpSfbPAFIiDjw==");
-        assert_eq!(decrypt_text(b"u9bcSUF3rVpSfbPAFIiDjw==").unwrap(), r#"{"a":1}"#);
-        assert_eq!(decrypt_text(b"  u9bcSUF3rVpSfbPAFIiDjw==\r\n").unwrap(), r#"{"a":1}"#);
+        assert_eq!(
+            decrypt_text(b"u9bcSUF3rVpSfbPAFIiDjw==").unwrap(),
+            r#"{"a":1}"#
+        );
+        assert_eq!(
+            decrypt_text(b"  u9bcSUF3rVpSfbPAFIiDjw==\r\n").unwrap(),
+            r#"{"a":1}"#
+        );
     }
 
     #[test]
     fn error_per_step() {
         assert_eq!(decrypt_text(b"   ").unwrap_err(), FormatError::Empty);
-        assert_eq!(decrypt_text(b"not base64!").unwrap_err(), FormatError::NotBase64);
+        assert_eq!(
+            decrypt_text(b"not base64!").unwrap_err(),
+            FormatError::NotBase64
+        );
         assert_eq!(decrypt_text(b"AAAA").unwrap_err(), FormatError::BadLength);
-        assert_eq!(decrypt_text(b"AAAAAAAAAAAAAAAAAAAAAA==").unwrap_err(), FormatError::BadPadding);
-        let not_utf8 = base64::engine::general_purpose::STANDARD
-            .encode(Enc::new(&KEY.into(), &IV.into()).encrypt_padded_vec_mut::<Pkcs7>(&[0xff, 0xfe]));
-        assert_eq!(decrypt_text(not_utf8.as_bytes()).unwrap_err(), FormatError::NotUtf8);
-        assert!(matches!(read_sav(encrypt_text("{oops").as_bytes()).unwrap_err(), FormatError::NotJson(_)));
-        assert_eq!(read_sav(encrypt_text("[1]").as_bytes()).unwrap_err(), FormatError::NotObject);
+        assert_eq!(
+            decrypt_text(b"AAAAAAAAAAAAAAAAAAAAAA==").unwrap_err(),
+            FormatError::BadPadding
+        );
+        let not_utf8 = base64::engine::general_purpose::STANDARD.encode(
+            Enc::new(&KEY.into(), &IV.into()).encrypt_padded_vec_mut::<Pkcs7>(&[0xff, 0xfe]),
+        );
+        assert_eq!(
+            decrypt_text(not_utf8.as_bytes()).unwrap_err(),
+            FormatError::NotUtf8
+        );
+        assert!(matches!(
+            read_sav(encrypt_text("{oops").as_bytes()).unwrap_err(),
+            FormatError::NotJson(_)
+        ));
+        assert_eq!(
+            read_sav(encrypt_text("[1]").as_bytes()).unwrap_err(),
+            FormatError::NotObject
+        );
     }
 
     #[test]

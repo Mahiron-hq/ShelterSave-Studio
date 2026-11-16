@@ -29,7 +29,9 @@ fn real_saves_round_trip_byte_for_byte() {
 
 #[test]
 fn real_saves_have_no_integrity_errors() {
-    let Ok(dir) = std::env::var("SHELTER_SAMPLES") else { return };
+    let Ok(dir) = std::env::var("SHELTER_SAMPLES") else {
+        return;
+    };
     for entry in std::fs::read_dir(dir).expect("samples dir") {
         let path = entry.expect("entry").path();
         if path.extension().and_then(|e| e.to_str()) != Some("sav") {
@@ -38,10 +40,18 @@ fn real_saves_have_no_integrity_errors() {
         let root = sav::read_sav(&std::fs::read(&path).expect("read")).expect("parse");
         let issues = shelter_core::integrity::check(&root);
         for i in &issues {
-            eprintln!("{}: {:?} {} {:?}", path.display(), i.severity, i.code, i.params);
+            eprintln!(
+                "{}: {:?} {} {:?}",
+                path.display(),
+                i.severity,
+                i.code,
+                i.params
+            );
         }
         assert!(
-            issues.iter().all(|i| i.severity != shelter_core::integrity::Severity::Error),
+            issues
+                .iter()
+                .all(|i| i.severity != shelter_core::integrity::Severity::Error),
             "{}",
             path.display()
         );

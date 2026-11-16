@@ -55,7 +55,10 @@ pub struct Label {
 
 impl Label {
     pub fn new(key: &str) -> Label {
-        Label { key: key.to_string(), params: Vec::new() }
+        Label {
+            key: key.to_string(),
+            params: Vec::new(),
+        }
     }
 
     pub fn with(mut self, name: &str, value: impl ToString) -> Label {
@@ -96,34 +99,74 @@ impl std::error::Error for EditError {}
 impl Op {
     pub fn inverse(&self) -> Op {
         match self.clone() {
-            Op::Set { path, old, new } => Op::Set { path, old: new, new: old },
-            Op::Insert { parent, index, key, value } => Op::Remove { parent, index, key, value },
-            Op::Remove { parent, index, key, value } => Op::Insert { parent, index, key, value },
+            Op::Set { path, old, new } => Op::Set {
+                path,
+                old: new,
+                new: old,
+            },
+            Op::Insert {
+                parent,
+                index,
+                key,
+                value,
+            } => Op::Remove {
+                parent,
+                index,
+                key,
+                value,
+            },
+            Op::Remove {
+                parent,
+                index,
+                key,
+                value,
+            } => Op::Insert {
+                parent,
+                index,
+                key,
+                value,
+            },
         }
     }
 
     pub fn apply(&self, root: &mut Value) -> Result<(), EditError> {
         match self {
             Op::Set { path, old, new } => {
-                let target = root.at_mut(path).ok_or_else(|| EditError::PathNotFound(json::path_to_string(path)))?;
+                let target = root
+                    .at_mut(path)
+                    .ok_or_else(|| EditError::PathNotFound(json::path_to_string(path)))?;
                 if target != old {
                     return Err(EditError::Mismatch(json::path_to_string(path)));
                 }
                 *target = new.clone();
             }
-            Op::Insert { parent, index, key, value } => {
+            Op::Insert {
+                parent,
+                index,
+                key,
+                value,
+            } => {
                 let p = json::path_to_string(parent);
                 match (root.at_mut(parent), key) {
-                    (Some(Value::Array(a)), None) if *index <= a.len() => a.insert(*index, value.clone()),
+                    (Some(Value::Array(a)), None) if *index <= a.len() => {
+                        a.insert(*index, value.clone())
+                    }
                     (Some(Value::Object(o)), Some(k)) if *index <= o.0.len() => {
                         o.0.insert(*index, (JsonStr::new(k), value.clone()))
                     }
-                    (Some(Value::Array(_) | Value::Object(_)), _) => return Err(EditError::IndexOutOfRange(p)),
+                    (Some(Value::Array(_) | Value::Object(_)), _) => {
+                        return Err(EditError::IndexOutOfRange(p))
+                    }
                     (Some(_), _) => return Err(EditError::WrongContainer(p)),
                     (None, _) => return Err(EditError::PathNotFound(p)),
                 }
             }
-            Op::Remove { parent, index, key, value } => {
+            Op::Remove {
+                parent,
+                index,
+                key,
+                value,
+            } => {
                 let p = json::path_to_string(parent);
                 match (root.at_mut(parent), key) {
                     (Some(Value::Array(a)), None) if *index < a.len() => {
@@ -138,7 +181,9 @@ impl Op {
                         }
                         o.0.remove(*index);
                     }
-                    (Some(Value::Array(_) | Value::Object(_)), _) => return Err(EditError::IndexOutOfRange(p)),
+                    (Some(Value::Array(_) | Value::Object(_)), _) => {
+                        return Err(EditError::IndexOutOfRange(p))
+                    }
                     (Some(_), _) => return Err(EditError::WrongContainer(p)),
                     (None, _) => return Err(EditError::PathNotFound(p)),
                 }
@@ -175,7 +220,10 @@ pub struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(root: &'a mut Value) -> Builder<'a> {
-        Builder { root, ops: Vec::new() }
+        Builder {
+            root,
+            ops: Vec::new(),
+        }
     }
 
     pub fn root(&self) -> &Value {
@@ -187,7 +235,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn set(&mut self, path: Vec<Seg>, new: Value) -> Result<bool, EditError> {
-        let old = self.root.at(&path).cloned().ok_or_else(|| EditError::PathNotFound(json::path_to_string(&path)))?;
+        let old = self
+            .root
+            .at(&path)
+            .cloned()
+            .ok_or_else(|| EditError::PathNotFound(json::path_to_string(&path)))?;
         if old == new {
             return Ok(false);
         }
@@ -197,8 +249,19 @@ impl<'a> Builder<'a> {
         Ok(true)
     }
 
-    pub fn insert(&mut self, parent: Vec<Seg>, index: usize, key: Option<&str>, value: Value) -> Result<(), EditError> {
-        let op = Op::Insert { parent, index, key: key.map(str::to_string), value };
+    pub fn insert(
+        &mut self,
+        parent: Vec<Seg>,
+        index: usize,
+        key: Option<&str>,
+        value: Value,
+    ) -> Result<(), EditError> {
+        let op = Op::Insert {
+            parent,
+            index,
+            key: key.map(str::to_string),
+            value,
+        };
         op.apply(self.root)?;
         self.ops.push(op);
         Ok(())
@@ -216,12 +279,21 @@ impl<'a> Builder<'a> {
     pub fn remove(&mut self, parent: Vec<Seg>, index: usize) -> Result<Value, EditError> {
         let (key, value) = match self.root.at(&parent) {
             Some(Value::Array(a)) => (None, a.get(index).cloned()),
-            Some(Value::Object(o)) => o.0.get(index).map_or((None, None), |(k, v)| (Some(k.text()), Some(v.clone()))),
+            Some(Value::Object(o)) => {
+                o.0.get(index)
+                    .map_or((None, None), |(k, v)| (Some(k.text()), Some(v.clone())))
+            }
             Some(_) => return Err(EditError::WrongContainer(json::path_to_string(&parent))),
             None => return Err(EditError::PathNotFound(json::path_to_string(&parent))),
         };
-        let value = value.ok_or_else(|| EditError::IndexOutOfRange(json::path_to_string(&parent)))?;
-        let op = Op::Remove { parent, index, key, value: value.clone() };
+        let value =
+            value.ok_or_else(|| EditError::IndexOutOfRange(json::path_to_string(&parent)))?;
+        let op = Op::Remove {
+            parent,
+            index,
+            key,
+            value: value.clone(),
+        };
         op.apply(self.root)?;
         self.ops.push(op);
         Ok(value)
@@ -249,7 +321,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn remove_key(&mut self, obj: Vec<Seg>, key: &str) -> Result<bool, EditError> {
-        let idx = self.root.at(&obj).and_then(Value::as_object).and_then(|o| o.index_of(key));
+        let idx = self
+            .root
+            .at(&obj)
+            .and_then(Value::as_object)
+            .and_then(|o| o.index_of(key));
         match idx {
             Some(i) => {
                 self.remove(obj, i)?;
@@ -295,7 +371,9 @@ impl History {
     }
 
     pub fn undo(&mut self, root: &mut Value) -> Result<Option<Label>, EditError> {
-        let Some(tx) = self.done.pop() else { return Ok(None) };
+        let Some(tx) = self.done.pop() else {
+            return Ok(None);
+        };
         if let Err(e) = revert_all(root, &tx.ops) {
             self.done.push(tx);
             return Err(e);
@@ -306,7 +384,9 @@ impl History {
     }
 
     pub fn redo(&mut self, root: &mut Value) -> Result<Option<Label>, EditError> {
-        let Some(tx) = self.undone.pop() else { return Ok(None) };
+        let Some(tx) = self.undone.pop() else {
+            return Ok(None);
+        };
         if let Err(e) = apply_all(root, &tx.ops) {
             self.undone.push(tx);
             return Err(e);
@@ -393,7 +473,11 @@ mod tests {
         b.remove(vec![k("a")], 0).unwrap();
         b.set_key(vec![k("b")], "y", Value::int(7)).unwrap();
         let ops = b.finish();
-        h.record(Transaction { label: Label::new("t"), ops, affected: 1 });
+        h.record(Transaction {
+            label: Label::new("t"),
+            ops,
+            affected: 1,
+        });
         assert_eq!(root.to_compact(), r#"{"a":[2,3],"b":{"x":2.00,"y":7}}"#);
         h.undo(&mut root).unwrap();
         assert_eq!(root.to_compact(), src);
@@ -408,8 +492,16 @@ mod tests {
         let src = r#"{"a":1,"b":2}"#;
         let mut root = json::parse(src).unwrap();
         let ops = vec![
-            Op::Set { path: vec![k("a")], old: Value::int(1), new: Value::int(5) },
-            Op::Set { path: vec![k("b")], old: Value::int(9), new: Value::int(5) },
+            Op::Set {
+                path: vec![k("a")],
+                old: Value::int(1),
+                new: Value::int(5),
+            },
+            Op::Set {
+                path: vec![k("b")],
+                old: Value::int(9),
+                new: Value::int(5),
+            },
         ];
         assert!(apply_all(&mut root, &ops).is_err());
         assert_eq!(root.to_compact(), src);
@@ -417,7 +509,12 @@ mod tests {
 
     #[test]
     fn ops_serialize() {
-        let op = Op::Insert { parent: vec![k("a"), Seg::Index(2)], index: 0, key: None, value: Value::float2(1.0) };
+        let op = Op::Insert {
+            parent: vec![k("a"), Seg::Index(2)],
+            index: 0,
+            key: None,
+            value: Value::float2(1.0),
+        };
         let text = serde_json::to_string(&op).unwrap();
         let back: Op = serde_json::from_str(&text).unwrap();
         assert_eq!(back, op);

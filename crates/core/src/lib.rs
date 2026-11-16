@@ -15,10 +15,13 @@
 
 #![forbid(unsafe_code)]
 
-pub mod json;
-pub mod sav;
+pub mod actions;
 pub mod catalog;
 pub mod diff;
+pub mod document;
 pub mod edit;
 pub mod integrity;
+pub mod json;
+pub mod rules;
+pub mod sav;
 pub mod vault;

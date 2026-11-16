@@ -63,7 +63,9 @@ pub const RESOURCE_KEYS: [&str; 15] = [
 pub const SPECIAL_LETTERS: [&str; 7] = ["S", "P", "E", "C", "I", "A", "L"];
 
 pub fn arr<'a>(root: &'a Value, path: &[&str]) -> &'a [Value] {
-    root.at(&p(path)).and_then(Value::as_array).map_or(&[], Vec::as_slice)
+    root.at(&p(path))
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
 }
 
 pub fn int(v: &Value, path: &[&str]) -> Option<i64> {
@@ -79,31 +81,51 @@ pub fn flag(v: &Value, path: &[&str]) -> Option<bool> {
 }
 
 pub fn dweller_ids(root: &Value) -> Vec<i64> {
-    arr(root, &DWELLERS).iter().filter_map(|d| int(d, &["serializeId"])).collect()
+    arr(root, &DWELLERS)
+        .iter()
+        .filter_map(|d| int(d, &["serializeId"]))
+        .collect()
 }
 
 pub fn room_ids(root: &Value) -> Vec<i64> {
-    arr(root, &ROOMS).iter().filter_map(|r| int(r, &["deserializeID"])).collect()
+    arr(root, &ROOMS)
+        .iter()
+        .filter_map(|r| int(r, &["deserializeID"]))
+        .collect()
 }
 
 pub fn dweller_index(root: &Value, id: i64) -> Option<usize> {
-    arr(root, &DWELLERS).iter().position(|d| int(d, &["serializeId"]) == Some(id))
+    arr(root, &DWELLERS)
+        .iter()
+        .position(|d| int(d, &["serializeId"]) == Some(id))
 }
 
 pub fn room_index(root: &Value, id: i64) -> Option<usize> {
-    arr(root, &ROOMS).iter().position(|r| int(r, &["deserializeID"]) == Some(id))
+    arr(root, &ROOMS)
+        .iter()
+        .position(|r| int(r, &["deserializeID"]) == Some(id))
 }
 
 /// Value of SPECIAL stat 1..=7 (S..L).
 pub fn special(d: &Value, stat: usize) -> Option<i64> {
-    d.at(&[Seg::Key("stats".into()), Seg::Key("stats".into()), Seg::Index(stat), Seg::Key("value".into())])
-        .and_then(Value::as_i64)
+    d.at(&[
+        Seg::Key("stats".into()),
+        Seg::Key("stats".into()),
+        Seg::Index(stat),
+        Seg::Key("value".into()),
+    ])
+    .and_then(Value::as_i64)
 }
 
 pub fn special_mod(d: &Value, stat: usize) -> i64 {
-    d.at(&[Seg::Key("stats".into()), Seg::Key("stats".into()), Seg::Index(stat), Seg::Key("mod".into())])
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
+    d.at(&[
+        Seg::Key("stats".into()),
+        Seg::Key("stats".into()),
+        Seg::Index(stat),
+        Seg::Key("mod".into()),
+    ])
+    .and_then(Value::as_i64)
+    .unwrap_or(0)
 }
 
 pub fn dweller_name(d: &Value) -> String {
@@ -114,7 +136,9 @@ pub fn dweller_name(d: &Value) -> String {
 
 pub fn is_dead(d: &Value) -> bool {
     int(d, &["deathTime"]).is_some_and(|t| t >= 0)
-        || d.at(&p(&["deathTime"])).and_then(Value::as_f64).is_some_and(|t| t >= 0.0)
+        || d.at(&p(&["deathTime"]))
+            .and_then(Value::as_f64)
+            .is_some_and(|t| t >= 0.0)
         || flag(d, &["health", "permaDeath"]) == Some(true)
 }
 

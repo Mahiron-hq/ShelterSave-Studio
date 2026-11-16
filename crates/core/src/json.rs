@@ -70,7 +70,11 @@ pub struct ParseError {
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} at line {}, column {}", self.kind, self.line, self.column)
+        write!(
+            f,
+            "{:?} at line {}, column {}",
+            self.kind, self.line, self.column
+        )
     }
 }
 
@@ -289,7 +293,10 @@ impl Object {
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
-        self.0.iter_mut().find(|(k, _)| k.eq_text(key)).map(|(_, v)| v)
+        self.0
+            .iter_mut()
+            .find(|(k, _)| k.eq_text(key))
+            .map(|(_, v)| v)
     }
 
     pub fn index_of(&self, key: &str) -> Option<usize> {
@@ -323,7 +330,12 @@ impl Value {
     }
 
     pub fn obj(entries: Vec<(&str, Value)>) -> Value {
-        Value::Object(Object(entries.into_iter().map(|(k, v)| (JsonStr::new(k), v)).collect()))
+        Value::Object(Object(
+            entries
+                .into_iter()
+                .map(|(k, v)| (JsonStr::new(k), v))
+                .collect(),
+        ))
     }
 
     pub fn as_object(&self) -> Option<&Object> {
@@ -547,7 +559,10 @@ fn write_pretty(v: &Value, out: &mut String, indent: usize) {
 }
 
 pub fn parse(text: &str) -> Result<Value, ParseError> {
-    let mut p = Parser { s: text.as_bytes(), i: 0 };
+    let mut p = Parser {
+        s: text.as_bytes(),
+        i: 0,
+    };
     p.ws();
     let v = p.value(0)?;
     p.ws();
@@ -578,7 +593,10 @@ impl Parser<'_> {
     }
 
     fn peek(&self) -> Result<u8, ParseError> {
-        self.s.get(self.i).copied().ok_or_else(|| self.err(ParseErrorKind::UnexpectedEnd))
+        self.s
+            .get(self.i)
+            .copied()
+            .ok_or_else(|| self.err(ParseErrorKind::UnexpectedEnd))
     }
 
     fn value(&mut self, depth: usize) -> Result<Value, ParseError> {
@@ -618,7 +636,8 @@ impl Parser<'_> {
         while let Some(b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9') = self.s.get(self.i) {
             self.i += 1;
         }
-        let lit = std::str::from_utf8(&self.s[start..self.i]).map_err(|_| self.err(ParseErrorKind::BadNumber))?;
+        let lit = std::str::from_utf8(&self.s[start..self.i])
+            .map_err(|_| self.err(ParseErrorKind::BadNumber))?;
         if !is_number_literal(lit) {
             self.i = start;
             return Err(self.err(ParseErrorKind::BadNumber));
@@ -653,7 +672,8 @@ impl Parser<'_> {
                 _ => self.i += 1,
             }
         }
-        let raw = std::str::from_utf8(&self.s[start..self.i]).map_err(|_| self.err(ParseErrorKind::UnexpectedChar))?;
+        let raw = std::str::from_utf8(&self.s[start..self.i])
+            .map_err(|_| self.err(ParseErrorKind::UnexpectedChar))?;
         self.i += 1;
         Ok(JsonStr(raw.into()))
     }
@@ -742,7 +762,18 @@ mod tests {
 
     #[test]
     fn rejects_bad_input() {
-        for bad in ["", "{", "[1,]", "{\"a\" 1}", "01", "1.", "\"\\x\"", "\"a\nb\"", "{} x", "tru"] {
+        for bad in [
+            "",
+            "{",
+            "[1,]",
+            "{\"a\" 1}",
+            "01",
+            "1.",
+            "\"\\x\"",
+            "\"a\nb\"",
+            "{} x",
+            "tru",
+        ] {
             assert!(parse(bad).is_err(), "{bad:?}");
         }
     }
@@ -756,7 +787,10 @@ mod tests {
     #[test]
     fn string_encoding_matches_game() {
         let s = JsonStr::new("Убежище \"1\"\n😀");
-        assert_eq!(s.raw(), "\\u0423\\u0431\\u0435\\u0436\\u0438\\u0449\\u0435 \\\"1\\\"\\n\\ud83d\\ude00");
+        assert_eq!(
+            s.raw(),
+            "\\u0423\\u0431\\u0435\\u0436\\u0438\\u0449\\u0435 \\\"1\\\"\\n\\ud83d\\ude00"
+        );
         assert_eq!(s.text(), "Убежище \"1\"\n😀");
     }
 
@@ -767,7 +801,10 @@ mod tests {
         let i = Number::from_literal("15").unwrap();
         assert_eq!(i.restyle(20.0).as_str(), "20");
         assert_eq!(i.restyle(2.5).as_str(), "2.50");
-        assert_eq!(Number::from_literal("636820115098349470").unwrap().as_i64(), Some(636820115098349470));
+        assert_eq!(
+            Number::from_literal("636820115098349470").unwrap().as_i64(),
+            Some(636820115098349470)
+        );
         assert!(Number::from_literal("1e5").is_some());
         assert!(Number::from_literal("+1").is_none());
     }

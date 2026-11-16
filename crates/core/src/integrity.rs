@@ -49,7 +49,13 @@ pub struct Issue {
 
 impl Issue {
     fn new(code: &'static str, severity: Severity, path: Vec<Seg>) -> Issue {
-        Issue { code, severity, path, params: Vec::new(), fixable: true }
+        Issue {
+            code,
+            severity,
+            path,
+            params: Vec::new(),
+            fixable: true,
+        }
     }
 
     fn param(mut self, k: &str, v: impl ToString) -> Issue {
@@ -87,16 +93,42 @@ pub fn check(root: &Value) -> Vec<Issue> {
         match int(d, &["serializeId"]) {
             Some(id) => {
                 if !(0..=32767).contains(&id) {
-                    out.push(Issue::new("dweller_id_range", Severity::Error, seg_path(&DWELLERS, i, &["serializeId"])).param("id", id).manual());
+                    out.push(
+                        Issue::new(
+                            "dweller_id_range",
+                            Severity::Error,
+                            seg_path(&DWELLERS, i, &["serializeId"]),
+                        )
+                        .param("id", id)
+                        .manual(),
+                    );
                 }
                 if ids.insert(id, i).is_some() {
-                    out.push(Issue::new("dweller_id_duplicate", Severity::Error, seg_path(&DWELLERS, i, &["serializeId"])).param("id", id).manual());
+                    out.push(
+                        Issue::new(
+                            "dweller_id_duplicate",
+                            Severity::Error,
+                            seg_path(&DWELLERS, i, &["serializeId"]),
+                        )
+                        .param("id", id)
+                        .manual(),
+                    );
                 }
             }
-            None => out.push(Issue::new("dweller_id_missing", Severity::Error, seg_path(&DWELLERS, i, &[])).manual()),
+            None => out.push(
+                Issue::new(
+                    "dweller_id_missing",
+                    Severity::Error,
+                    seg_path(&DWELLERS, i, &[]),
+                )
+                .manual(),
+            ),
         }
     }
-    let quest_ids: HashSet<i64> = arr(root, &QUEST_DWELLERS).iter().filter_map(|d| int(d, &["serializeId"])).collect();
+    let quest_ids: HashSet<i64> = arr(root, &QUEST_DWELLERS)
+        .iter()
+        .filter_map(|d| int(d, &["serializeId"]))
+        .collect();
     let known_dweller = |id: i64| ids.contains_key(&id) || quest_ids.contains(&id);
 
     let mut actor_ids = HashSet::new();
@@ -105,18 +137,37 @@ pub fn check(root: &Value) -> Vec<Issue> {
         if let Some(id) = int(a, &["serializeId"]) {
             max_actor = max_actor.max(id);
             if !actor_ids.insert(id) {
-                out.push(Issue::new("actor_id_duplicate", Severity::Error, seg_path(&ACTORS, i, &["serializeId"])).param("id", id).manual());
+                out.push(
+                    Issue::new(
+                        "actor_id_duplicate",
+                        Severity::Error,
+                        seg_path(&ACTORS, i, &["serializeId"]),
+                    )
+                    .param("id", id)
+                    .manual(),
+                );
             }
         }
         if let Some(f) = int(a, &["FollowedID"]) {
             if f != -1 && !known_dweller(f) {
-                out.push(Issue::new("pet_owner_missing", Severity::Error, seg_path(&ACTORS, i, &["FollowedID"])).param("id", f));
+                out.push(
+                    Issue::new(
+                        "pet_owner_missing",
+                        Severity::Error,
+                        seg_path(&ACTORS, i, &["FollowedID"]),
+                    )
+                    .param("id", f),
+                );
             }
         }
     }
     if let Some(ctr) = int(root, &["dwellers", "mrhId"]) {
         if ctr <= max_actor {
-            out.push(Issue::new("actor_counter", Severity::Error, p(&["dwellers", "mrhId"])).param("value", ctr).param("max", max_actor));
+            out.push(
+                Issue::new("actor_counter", Severity::Error, p(&["dwellers", "mrhId"]))
+                    .param("value", ctr)
+                    .param("max", max_actor),
+            );
         }
     }
 
@@ -126,36 +177,77 @@ pub fn check(root: &Value) -> Vec<Issue> {
         if let Some(id) = int(r, &["deserializeID"]) {
             max_room = max_room.max(id);
             if !room_set.insert(id) {
-                out.push(Issue::new("room_id_duplicate", Severity::Error, seg_path(&ROOMS, i, &["deserializeID"])).param("id", id).manual());
+                out.push(
+                    Issue::new(
+                        "room_id_duplicate",
+                        Severity::Error,
+                        seg_path(&ROOMS, i, &["deserializeID"]),
+                    )
+                    .param("id", id)
+                    .manual(),
+                );
             }
         }
     }
     if let Some(ctr) = int(root, &["constructMgr", "roomDeserializeID"]) {
         if ctr < max_room {
-            out.push(Issue::new("room_counter", Severity::Error, p(&["constructMgr", "roomDeserializeID"])).param("value", ctr).param("max", max_room));
+            out.push(
+                Issue::new(
+                    "room_counter",
+                    Severity::Error,
+                    p(&["constructMgr", "roomDeserializeID"]),
+                )
+                .param("value", ctr)
+                .param("max", max_room),
+            );
         }
     }
 
     let mut seen_in_room: HashMap<i64, i64> = HashMap::new();
     for (i, r) in rooms.iter().enumerate() {
         let rid = int(r, &["deserializeID"]).unwrap_or(-1);
-        for (j, v) in r.get("dwellers").and_then(Value::as_array).map_or(&[][..], Vec::as_slice).iter().enumerate() {
+        for (j, v) in r
+            .get("dwellers")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .enumerate()
+        {
             let Some(id) = v.as_i64() else { continue };
             let mut path = seg_path(&ROOMS, i, &["dwellers"]);
             path.push(Seg::Index(j));
             if !ids.contains_key(&id) {
-                out.push(Issue::new("room_dweller_missing", Severity::Error, path).param("id", id).param("room", rid));
+                out.push(
+                    Issue::new("room_dweller_missing", Severity::Error, path)
+                        .param("id", id)
+                        .param("room", rid),
+                );
             } else if let Some(other) = seen_in_room.insert(id, rid) {
-                out.push(Issue::new("dweller_in_two_rooms", Severity::Error, path).param("id", id).param("room", rid).param("other", other));
+                out.push(
+                    Issue::new("dweller_in_two_rooms", Severity::Error, path)
+                        .param("id", id)
+                        .param("room", rid)
+                        .param("other", other),
+                );
             }
         }
-        for (j, s) in r.get("slots").and_then(Value::as_array).map_or(&[][..], Vec::as_slice).iter().enumerate() {
+        for (j, s) in r
+            .get("slots")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .enumerate()
+        {
             if let Some(id) = int(s, &["dwellerID"]) {
                 if id != -1 && !ids.contains_key(&id) {
                     let mut path = seg_path(&ROOMS, i, &["slots"]);
                     path.push(Seg::Index(j));
                     path.push(Seg::Key("dwellerID".into()));
-                    out.push(Issue::new("slot_dweller_missing", Severity::Error, path).param("id", id).param("room", rid));
+                    out.push(
+                        Issue::new("slot_dweller_missing", Severity::Error, path)
+                            .param("id", id)
+                            .param("room", rid),
+                    );
                 }
             }
         }
@@ -166,26 +258,55 @@ pub fn check(root: &Value) -> Vec<Issue> {
         for key in ["partner", "lastPartner"] {
             if let Some(pid) = int(d, &["relations", key]) {
                 if pid != -1 && !ids.contains_key(&pid) {
-                    out.push(Issue::new("partner_missing", Severity::Error, seg_path(&DWELLERS, i, &["relations", key])).param("id", pid));
+                    out.push(
+                        Issue::new(
+                            "partner_missing",
+                            Severity::Error,
+                            seg_path(&DWELLERS, i, &["relations", key]),
+                        )
+                        .param("id", pid),
+                    );
                 }
             }
         }
         if let Some(pid) = int(d, &["relations", "partner"]) {
             if let Some(&j) = ids.get(&pid) {
                 if int(&dwellers[j], &["relations", "partner"]) != Some(me) {
-                    out.push(Issue::new("partner_not_mutual", Severity::Warning, seg_path(&DWELLERS, i, &["relations", "partner"])).param("id", me).param("partner", pid));
+                    out.push(
+                        Issue::new(
+                            "partner_not_mutual",
+                            Severity::Warning,
+                            seg_path(&DWELLERS, i, &["relations", "partner"]),
+                        )
+                        .param("id", me)
+                        .param("partner", pid),
+                    );
                 }
             }
         }
         if let Some(rid) = int(d, &["savedRoom"]) {
             if rid != -1 && !room_set.contains(&rid) {
-                out.push(Issue::new("saved_room_missing", Severity::Error, seg_path(&DWELLERS, i, &["savedRoom"])).param("room", rid));
+                out.push(
+                    Issue::new(
+                        "saved_room_missing",
+                        Severity::Error,
+                        seg_path(&DWELLERS, i, &["savedRoom"]),
+                    )
+                    .param("room", rid),
+                );
             }
         }
         for key in ["skinColor", "hairColor", "outfitColor"] {
             if let Some(c) = int(d, &[key]) {
                 if (c as u64 >> 24) & 0xff != 0xff {
-                    out.push(Issue::new("color_alpha", Severity::Warning, seg_path(&DWELLERS, i, &[key])).param("id", me));
+                    out.push(
+                        Issue::new(
+                            "color_alpha",
+                            Severity::Warning,
+                            seg_path(&DWELLERS, i, &[key]),
+                        )
+                        .param("id", me),
+                    );
                 }
             }
         }
@@ -198,7 +319,10 @@ pub fn check(root: &Value) -> Vec<Issue> {
                 if !known_dweller(id) {
                     let mut path = join(&team, &["DwellersDictionary"]);
                     path.push(Seg::Index(j));
-                    out.push(Issue::new("quest_dweller_missing", Severity::Warning, path).param("id", id));
+                    out.push(
+                        Issue::new("quest_dweller_missing", Severity::Warning, path)
+                            .param("id", id),
+                    );
                 }
             }
         }
@@ -209,7 +333,10 @@ pub fn check(root: &Value) -> Vec<Issue> {
                 if id != -1 && !known_dweller(id) {
                     let mut path = join(&team, &["InitialEquipment"]);
                     path.push(Seg::Index(j));
-                    out.push(Issue::new("quest_dweller_missing", Severity::Warning, path).param("id", id));
+                    out.push(
+                        Issue::new("quest_dweller_missing", Severity::Warning, path)
+                            .param("id", id),
+                    );
                 }
             }
         }
@@ -222,22 +349,50 @@ pub fn check(root: &Value) -> Vec<Issue> {
     out
 }
 
-fn check_happiness(root: &Value, ids: &HashMap<i64, usize>, rooms: &HashSet<i64>, out: &mut Vec<Issue>) {
-    let Some(hm) = root.get("happinessManager").and_then(Value::as_object) else { return };
+fn check_happiness(
+    root: &Value,
+    ids: &HashMap<i64, usize>,
+    rooms: &HashSet<i64>,
+    out: &mut Vec<Issue>,
+) {
+    let Some(hm) = root.get("happinessManager").and_then(Value::as_object) else {
+        return;
+    };
     for (prefix, list_key) in [("room", "rooms"), ("dweller", "dwellers")] {
         let keys: BTreeSet<i64> = hm
             .keys()
             .filter_map(|k| k.strip_prefix(prefix).and_then(|n| n.parse::<i64>().ok()))
             .collect();
-        let listed: BTreeSet<i64> =
-            hm.get(list_key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+        let listed: BTreeSet<i64> = hm
+            .get(list_key)
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default();
         for id in keys.symmetric_difference(&listed) {
-            out.push(Issue::new("happiness_list_mismatch", Severity::Warning, p(&["happinessManager", list_key])).param("id", id));
+            out.push(
+                Issue::new(
+                    "happiness_list_mismatch",
+                    Severity::Warning,
+                    p(&["happinessManager", list_key]),
+                )
+                .param("id", id),
+            );
         }
         for id in keys.union(&listed) {
-            let exists = if prefix == "room" { rooms.contains(id) } else { ids.contains_key(id) };
+            let exists = if prefix == "room" {
+                rooms.contains(id)
+            } else {
+                ids.contains_key(id)
+            };
             if !exists {
-                out.push(Issue::new("happiness_stale", Severity::Warning, p(&["happinessManager"])).param("key", format!("{prefix}{id}")));
+                out.push(
+                    Issue::new(
+                        "happiness_stale",
+                        Severity::Warning,
+                        p(&["happinessManager"]),
+                    )
+                    .param("key", format!("{prefix}{id}")),
+                );
             }
         }
     }
@@ -249,12 +404,28 @@ fn check_lunchboxes(root: &Value, out: &mut Vec<Issue>) {
     let len = types.map_or(0, Vec::len) as i64;
     if let Some(count) = int(v, &["LunchBoxesCount"]) {
         if types.is_some() && count != len {
-            out.push(Issue::new("lunchbox_count", Severity::Error, p(&["vault", "LunchBoxesCount"])).param("value", count).param("expected", len));
+            out.push(
+                Issue::new(
+                    "lunchbox_count",
+                    Severity::Error,
+                    p(&["vault", "LunchBoxesCount"]),
+                )
+                .param("value", count)
+                .param("expected", len),
+            );
         }
     }
     if let Some(Value::Array(names)) = v.get("LunchBoxDeckNames") {
         if !names.is_empty() && names.len() as i64 != len {
-            out.push(Issue::new("lunchbox_deck_names", Severity::Warning, p(&["vault", "LunchBoxDeckNames"])).param("value", names.len()).param("expected", len));
+            out.push(
+                Issue::new(
+                    "lunchbox_deck_names",
+                    Severity::Warning,
+                    p(&["vault", "LunchBoxDeckNames"]),
+                )
+                .param("value", names.len())
+                .param("expected", len),
+            );
         }
     }
 }
@@ -264,11 +435,19 @@ fn check_tasks(root: &Value, out: &mut Vec<Issue>) {
     let max = tasks.iter().copied().max().unwrap_or(-1);
     if let Some(ctr) = int(root, &["taskMgr", "id"]) {
         if ctr < max {
-            out.push(Issue::new("task_counter", Severity::Error, p(&["taskMgr", "id"])).param("value", ctr).param("max", max));
+            out.push(
+                Issue::new("task_counter", Severity::Error, p(&["taskMgr", "id"]))
+                    .param("value", ctr)
+                    .param("max", max),
+            );
         }
     }
     for (i, r) in arr(root, &ROOMS).iter().enumerate() {
-        let mut refs: Vec<Vec<&str>> = vec![vec!["rushTask"], vec!["currentState", "taskId"], vec!["currentState", "breedingTaskId"]];
+        let mut refs: Vec<Vec<&str>> = vec![
+            vec!["rushTask"],
+            vec!["currentState", "taskId"],
+            vec!["currentState", "breedingTaskId"],
+        ];
         let slots = r.get("slots").and_then(Value::as_array).map_or(0, Vec::len);
         let slot_paths: Vec<Vec<Seg>> = (0..slots)
             .map(|j| {
@@ -278,7 +457,10 @@ fn check_tasks(root: &Value, out: &mut Vec<Issue>) {
                 path
             })
             .collect();
-        let mut paths: Vec<Vec<Seg>> = refs.drain(..).map(|rel| seg_path(&ROOMS, i, &rel)).collect();
+        let mut paths: Vec<Vec<Seg>> = refs
+            .drain(..)
+            .map(|rel| seg_path(&ROOMS, i, &rel))
+            .collect();
         paths.extend(slot_paths);
         for path in paths {
             if let Some(id) = root.at(&path).and_then(Value::as_i64) {
@@ -299,7 +481,10 @@ fn check_requirements(root: &Value, ids: &HashMap<i64, usize>, out: &mut Vec<Iss
                         if d != -1 && !ids.contains_key(&d) {
                             let mut pth = path.clone();
                             pth.push(Seg::Key("dweller".into()));
-                            out.push(Issue::new("requirement_dweller_missing", Severity::Warning, pth).param("id", d));
+                            out.push(
+                                Issue::new("requirement_dweller_missing", Severity::Warning, pth)
+                                    .param("id", d),
+                            );
                         }
                     }
                 }
@@ -332,7 +517,11 @@ fn check_requirements(root: &Value, ids: &HashMap<i64, usize>, out: &mut Vec<Iss
 }
 
 fn param<'a>(issue: &'a Issue, key: &str) -> Option<&'a str> {
-    issue.params.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    issue
+        .params
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 /// Applies the automatic fix of one issue. Returns false when nothing was done.
@@ -342,16 +531,25 @@ pub fn fix(b: &mut Builder<'_>, issue: &Issue) -> Result<bool, EditError> {
     }
     let num = |k: &str| param(issue, k).and_then(|v| v.parse::<i64>().ok());
     match issue.code {
-        "pet_owner_missing" | "slot_dweller_missing" | "partner_missing" | "saved_room_missing" | "task_missing"
-        | "requirement_dweller_missing" | "partner_not_mutual" => {
-            b.set(issue.path.clone(), Value::int(-1))
-        }
+        "pet_owner_missing"
+        | "slot_dweller_missing"
+        | "partner_missing"
+        | "saved_room_missing"
+        | "task_missing"
+        | "requirement_dweller_missing"
+        | "partner_not_mutual" => b.set(issue.path.clone(), Value::int(-1)),
         "actor_counter" => b.set(issue.path.clone(), Value::int(num("max").unwrap_or(0) + 1)),
-        "room_counter" | "task_counter" => b.set(issue.path.clone(), Value::int(num("max").unwrap_or(0))),
+        "room_counter" | "task_counter" => {
+            b.set(issue.path.clone(), Value::int(num("max").unwrap_or(0)))
+        }
         "lunchbox_count" => b.set(issue.path.clone(), Value::int(num("expected").unwrap_or(0))),
         "lunchbox_deck_names" => {
             let expected = num("expected").unwrap_or(0).max(0) as usize;
-            let mut names: Vec<Value> = b.get(&issue.path).and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut names: Vec<Value> = b
+                .get(&issue.path)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
             names.resize(expected, Value::str("Normal"));
             b.set(issue.path.clone(), Value::Array(names))
         }
@@ -367,7 +565,10 @@ pub fn fix(b: &mut Builder<'_>, issue: &Issue) -> Result<bool, EditError> {
         }
         "color_alpha" => {
             let c = b.get(&issue.path).and_then(Value::as_i64).unwrap_or(0);
-            b.set(issue.path.clone(), Value::int((c & 0x00ff_ffff) | 0xff00_0000))
+            b.set(
+                issue.path.clone(),
+                Value::int((c & 0x00ff_ffff) | 0xff00_0000),
+            )
         }
         "happiness_list_mismatch" | "happiness_stale" => {
             let rooms: HashSet<i64> = room_ids(b.root()).into_iter().collect();
@@ -379,9 +580,15 @@ pub fn fix(b: &mut Builder<'_>, issue: &Issue) -> Result<bool, EditError> {
 }
 
 /// Makes `happinessManager` lists and dynamic keys agree with existing rooms and dwellers.
-pub fn sync_happiness(b: &mut Builder<'_>, rooms: &HashSet<i64>, ids: &HashSet<i64>) -> Result<bool, EditError> {
+pub fn sync_happiness(
+    b: &mut Builder<'_>,
+    rooms: &HashSet<i64>,
+    ids: &HashSet<i64>,
+) -> Result<bool, EditError> {
     let hm_path = p(&["happinessManager"]);
-    let Some(hm) = b.get(&hm_path).and_then(Value::as_object).cloned() else { return Ok(false) };
+    let Some(hm) = b.get(&hm_path).and_then(Value::as_object).cloned() else {
+        return Ok(false);
+    };
     let mut changed = false;
     let mut keep: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
     for (prefix, list_key, exists) in [("room", "rooms", rooms), ("dweller", "dwellers", ids)] {
@@ -400,14 +607,21 @@ pub fn sync_happiness(b: &mut Builder<'_>, rooms: &HashSet<i64>, ids: &HashSet<i
     for (list_key, valid) in keep {
         if let Some(Value::Array(cur)) = hm.get(list_key) {
             let current: Vec<i64> = cur.iter().filter_map(Value::as_i64).collect();
-            let mut want: Vec<i64> = current.iter().copied().filter(|id| valid.contains(id)).collect();
+            let mut want: Vec<i64> = current
+                .iter()
+                .copied()
+                .filter(|id| valid.contains(id))
+                .collect();
             for id in &valid {
                 if !want.contains(id) {
                     want.push(*id);
                 }
             }
             if want != current {
-                changed |= b.set(join(&hm_path, &[list_key]), Value::Array(want.into_iter().map(Value::int).collect()))?;
+                changed |= b.set(
+                    join(&hm_path, &[list_key]),
+                    Value::Array(want.into_iter().map(Value::int).collect()),
+                )?;
             }
         }
     }
@@ -419,7 +633,9 @@ pub fn fix_all(b: &mut Builder<'_>) -> Result<usize, EditError> {
     let mut fixed = 0;
     for _ in 0..64 {
         let issues = check(b.root());
-        let Some(issue) = issues.iter().find(|i| i.fixable) else { break };
+        let Some(issue) = issues.iter().find(|i| i.fixable) else {
+            break;
+        };
         if fix(b, issue)? {
             fixed += 1;
         } else {
@@ -432,7 +648,9 @@ pub fn fix_all(b: &mut Builder<'_>) -> Result<usize, EditError> {
 /// Splits issues into those already in the original file and new ones.
 pub fn classify(original: &[Issue], current: Vec<Issue>) -> (Vec<Issue>, Vec<Issue>) {
     let before: HashSet<String> = original.iter().map(Issue::fingerprint).collect();
-    current.into_iter().partition(|i| before.contains(&i.fingerprint()))
+    current
+        .into_iter()
+        .partition(|i| before.contains(&i.fingerprint()))
 }
 
 #[cfg(test)]
@@ -457,9 +675,19 @@ mod tests {
         let issues = check(&root);
         let codes: BTreeSet<&str> = issues.iter().map(|i| i.code).collect();
         for c in [
-            "pet_owner_missing", "actor_counter", "room_counter", "room_dweller_missing", "dweller_in_two_rooms",
-            "partner_not_mutual", "saved_room_missing", "color_alpha", "lunchbox_count", "lunchbox_deck_names",
-            "task_missing", "happiness_list_mismatch", "happiness_stale",
+            "pet_owner_missing",
+            "actor_counter",
+            "room_counter",
+            "room_dweller_missing",
+            "dweller_in_two_rooms",
+            "partner_not_mutual",
+            "saved_room_missing",
+            "color_alpha",
+            "lunchbox_count",
+            "lunchbox_deck_names",
+            "task_missing",
+            "happiness_list_mismatch",
+            "happiness_stale",
         ] {
             assert!(codes.contains(c), "missing {c}: {codes:?}");
         }

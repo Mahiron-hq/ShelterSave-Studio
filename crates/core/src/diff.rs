@@ -60,7 +60,10 @@ fn preview(v: &Value) -> String {
 
 fn identity(v: &Value) -> Option<(usize, i64)> {
     let o = v.as_object()?;
-    ID_KEYS.iter().enumerate().find_map(|(i, k)| o.get(k).and_then(Value::as_i64).map(|id| (i, id)))
+    ID_KEYS
+        .iter()
+        .enumerate()
+        .find_map(|(i, k)| o.get(k).and_then(Value::as_i64).map(|id| (i, id)))
 }
 
 fn keyed(a: &[Value]) -> bool {
@@ -98,7 +101,12 @@ fn walk(a: &Value, b: &Value, path: &mut Vec<Seg>, out: &mut Vec<Change>) {
                 let key = k.text();
                 if ob.get(&key).is_none() {
                     path.push(Seg::Key(key));
-                    out.push(Change { kind: ChangeKind::Removed, path: path.clone(), before: Some(preview(va)), after: None });
+                    out.push(Change {
+                        kind: ChangeKind::Removed,
+                        path: path.clone(),
+                        before: Some(preview(va)),
+                        after: None,
+                    });
                     path.pop();
                 }
             }
@@ -121,7 +129,12 @@ fn walk(a: &Value, b: &Value, path: &mut Vec<Seg>, out: &mut Vec<Change>) {
                 let id = identity(va);
                 if id.is_none() || !xb.iter().any(|vb| identity(vb) == id) {
                     path.push(Seg::Index(i));
-                    out.push(Change { kind: ChangeKind::Removed, path: path.clone(), before: Some(preview(va)), after: None });
+                    out.push(Change {
+                        kind: ChangeKind::Removed,
+                        path: path.clone(),
+                        before: Some(preview(va)),
+                        after: None,
+                    });
                     path.pop();
                 }
             }
@@ -135,12 +148,22 @@ fn walk(a: &Value, b: &Value, path: &mut Vec<Seg>, out: &mut Vec<Change>) {
             }
             for (i, vb) in xb.iter().enumerate().skip(common) {
                 path.push(Seg::Index(i));
-                out.push(Change { kind: ChangeKind::Added, path: path.clone(), before: None, after: Some(preview(vb)) });
+                out.push(Change {
+                    kind: ChangeKind::Added,
+                    path: path.clone(),
+                    before: None,
+                    after: Some(preview(vb)),
+                });
                 path.pop();
             }
             for (i, va) in xa.iter().enumerate().skip(common) {
                 path.push(Seg::Index(i));
-                out.push(Change { kind: ChangeKind::Removed, path: path.clone(), before: Some(preview(va)), after: None });
+                out.push(Change {
+                    kind: ChangeKind::Removed,
+                    path: path.clone(),
+                    before: Some(preview(va)),
+                    after: None,
+                });
                 path.pop();
             }
         }
@@ -193,11 +216,15 @@ mod tests {
 
     #[test]
     fn keyed_arrays_match_by_id() {
-        let a = parse(r#"{"d":[{"serializeId":1,"n":1},{"serializeId":2,"n":2},{"serializeId":3,"n":3}]}"#).unwrap();
+        let a = parse(
+            r#"{"d":[{"serializeId":1,"n":1},{"serializeId":2,"n":2},{"serializeId":3,"n":3}]}"#,
+        )
+        .unwrap();
         let b = parse(r#"{"d":[{"serializeId":1,"n":1},{"serializeId":3,"n":30}]}"#).unwrap();
         let ch = diff(&a, &b);
         assert_eq!(ch.len(), 2);
-        assert!(ch.iter().any(|c| c.kind == ChangeKind::Changed && c.path == vec![Seg::Key("d".into()), Seg::Index(1), Seg::Key("n".into())]));
+        assert!(ch.iter().any(|c| c.kind == ChangeKind::Changed
+            && c.path == vec![Seg::Key("d".into()), Seg::Index(1), Seg::Key("n".into())]));
         assert!(ch.iter().any(|c| c.kind == ChangeKind::Removed));
         let p = vec![Seg::Key("d".into()), Seg::Index(1), Seg::Key("n".into())];
         assert_eq!(original_at(&a, &b, &p).and_then(Value::as_i64), Some(3));

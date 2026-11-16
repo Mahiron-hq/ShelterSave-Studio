@@ -42,7 +42,8 @@ impl Names {
     }
 
     pub fn matches(&self, needle_lower: &str) -> bool {
-        self.en.to_lowercase().contains(needle_lower) || self.ru.to_lowercase().contains(needle_lower)
+        self.en.to_lowercase().contains(needle_lower)
+            || self.ru.to_lowercase().contains(needle_lower)
     }
 }
 
@@ -225,7 +226,12 @@ impl ItemKind {
         }
     }
 
-    pub const ALL: [ItemKind; 4] = [ItemKind::Weapon, ItemKind::Outfit, ItemKind::Junk, ItemKind::Pet];
+    pub const ALL: [ItemKind; 4] = [
+        ItemKind::Weapon,
+        ItemKind::Outfit,
+        ItemKind::Junk,
+        ItemKind::Pet,
+    ];
 }
 
 /// One entry of the item picker.
