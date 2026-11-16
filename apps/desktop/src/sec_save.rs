@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -32,9 +33,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             section_title(ui, icons::SHIELD, &app.t("nav.save"), "");
             panel(ui, |ui| {
                 ui.label(RichText::new(app.t("save.general")).font(style::bold(16.0)));
-                let o = Opts::key(app, "VaultName");
+                let o = Opts::at(app, &p(&["vault", "VaultName"]));
                 widgets::text_field(app, ui, &p(&["vault", "VaultName"]), o);
-                let o = Opts::key(app, "VaultMode");
+                let o = Opts::at(app, &p(&["vault", "VaultMode"]));
                 let choices = vec![
                     ("Normal".to_string(), app.t("vm.Normal")),
                     ("Survival".to_string(), app.t("vm.Survival")),
@@ -46,11 +47,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .as_ref()
                         .is_some_and(|o| o.doc.root().get(key).is_some())
                     {
-                        let o = Opts::key(app, key);
+                        let o = Opts::at(app, &p(&[key]));
                         widgets::text_field(app, ui, &p(&[key]), o);
                     }
                 }
-                let o = Opts::key(app, "versionCount");
+                let o = Opts::at(app, &p(&["versionCount"]));
                 widgets::num_field(app, ui, &p(&["versionCount"]), o);
             });
             ui.add_space(10.0);

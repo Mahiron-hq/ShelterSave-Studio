@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -136,14 +137,16 @@ pub struct App {
     pub dw: DwellerUi,
     pub st: StorageUi,
     pub room_sel: Option<i64>,
+    pub map_add: Option<crate::sec_vault::MapAdd>,
+    pub map_drag: Option<crate::sec_vault::MapDrag>,
     pub tree_search: String,
     pub tree_edit: HashMap<String, String>,
     pub bufs: HashMap<String, String>,
+    pub drags: HashMap<String, f64>,
     pub global_search: String,
     pub allow_close: bool,
     pub last_focus_check: bool,
     pub resource_all: f64,
-    pub lunch_counts: Option<[i64; 4]>,
     pub load_error: Option<String>,
     pub tree_add_key: String,
     pub tree_add_value: String,
@@ -171,14 +174,16 @@ impl App {
                 ..StorageUi::default()
             },
             room_sel: None,
+            map_add: None,
+            map_drag: None,
             tree_search: String::new(),
             tree_edit: HashMap::new(),
             bufs: HashMap::new(),
+            drags: HashMap::new(),
             global_search: String::new(),
             allow_close: false,
             last_focus_check: true,
             resource_all: 999_999.0,
-            lunch_counts: None,
             load_error: None,
             tree_add_key: String::new(),
             tree_add_value: String::new(),
@@ -266,6 +271,10 @@ impl App {
             ActionError::Rule(RuleError::ExpertOnly) => self.t("aerr.expertOnly"),
             ActionError::Rule(RuleError::TooManyDwellers) => self.t("aerr.tooManyDwellers"),
             ActionError::Rule(RuleError::RoomOverlap) => self.t("aerr.roomOverlap"),
+            ActionError::Rule(RuleError::RoomDisconnected) => self.t("aerr.roomDisconnected"),
+            ActionError::Rule(RuleError::RoomBusy) => self.t("aerr.roomBusy"),
+            ActionError::Rule(RuleError::RoomFixed) => self.t("aerr.roomFixed"),
+            ActionError::Rule(RuleError::RoomUnique) => self.t("aerr.roomUnique"),
             ActionError::Rule(RuleError::NotFound) => self.t("aerr.notFound"),
             ActionError::BadJson(d) => self.tf("aerr.badJson", &[("detail", d.clone())]),
             ActionError::Nothing => self.t("aerr.nothing"),
@@ -426,9 +435,11 @@ impl App {
             ..StorageUi::default()
         };
         self.room_sel = None;
+        self.map_add = None;
+        self.map_drag = None;
         self.bufs.clear();
+        self.drags.clear();
         self.tree_edit.clear();
-        self.lunch_counts = None;
     }
 
     pub fn close_file(&mut self) {

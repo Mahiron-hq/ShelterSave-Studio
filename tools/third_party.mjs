@@ -1,6 +1,6 @@
 // ShelterSave-Studio
 // Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Writes THIRD_PARTY.md from cargo metadata and the bundled assets.
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, existsSync } from "node:fs";

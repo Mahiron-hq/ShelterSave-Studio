@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -145,11 +146,7 @@ pub fn is_dead(d: &Value) -> bool {
 /// Grid cells a room covers in its row.
 pub fn room_width(room: &Value) -> i64 {
     let kind = text(room, &["type"]).unwrap_or_default();
-    let merge = int(room, &["mergeLevel"]).unwrap_or(1).max(1);
-    match kind.as_str() {
-        "Elevator" => 1,
-        _ => 3 * merge,
-    }
+    crate::map::width_of(&kind, int(room, &["mergeLevel"]).unwrap_or(1))
 }
 
 /// Task ids present in a scheduler (`taskMgr` or `task`).

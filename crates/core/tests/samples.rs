@@ -1,6 +1,6 @@
 // ShelterSave-Studio
 // Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Round trip of real saves from the folder in SHELTER_SAMPLES, if set.
 
@@ -56,4 +56,100 @@ fn real_saves_have_no_integrity_errors() {
             path.display()
         );
     }
+}
+
+#[test]
+fn room_removal_keeps_real_saves_valid() {
+    use shelter_core::actions::{run, Action, Ctx};
+    use shelter_core::integrity::{check, Severity};
+    use shelter_core::rules::Mode;
+    use shelter_core::vault::{arr, room_ids, DWELLERS};
+    let Ok(dir) = std::env::var("SHELTER_SAMPLES") else {
+        return;
+    };
+    for entry in std::fs::read_dir(dir).expect("samples dir") {
+        let path = entry.expect("entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("sav") {
+            continue;
+        }
+        let root = sav::read_sav(&std::fs::read(&path).expect("read")).expect("parse");
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &root,
+        };
+        let dwellers = arr(&root, &DWELLERS).len();
+        let mut removed = 0;
+        for id in room_ids(&root) {
+            let mut copy = root.clone();
+            if run(&mut copy, &ctx, &Action::RemoveRoom { room: id }).is_err() {
+                continue;
+            }
+            removed += 1;
+            assert_eq!(arr(&copy, &DWELLERS).len(), dwellers);
+            let errors: Vec<_> = check(&copy)
+                .into_iter()
+                .filter(|i| i.severity == Severity::Error)
+                .collect();
+            assert!(
+                errors.is_empty(),
+                "{} room {id}: {errors:?}",
+                path.display()
+            );
+            assert!(sav::read_sav(sav::write_sav(&copy).as_bytes()).is_ok());
+            if removed >= 8 {
+                break;
+            }
+        }
+        assert!(removed > 0, "{}", path.display());
+    }
+}
+
+#[test]
+fn every_field_of_real_saves_is_described() {
+    use shelter_core::fields::describe;
+    use shelter_core::i18n::Lang;
+    use shelter_core::json::{Seg, Value};
+    fn walk(v: &Value, path: &mut Vec<Seg>, missing: &mut std::collections::BTreeSet<String>) {
+        match v {
+            Value::Object(o) => {
+                for (k, child) in &o.0 {
+                    path.push(Seg::Key(k.text()));
+                    for lang in [Lang::En, Lang::Ru] {
+                        let f = describe(lang, path);
+                        if !f.known || f.help.is_empty() {
+                            missing.insert(shelter_core::json::path_to_string(path));
+                        }
+                    }
+                    walk(child, path, missing);
+                    path.pop();
+                }
+            }
+            Value::Array(a) => {
+                for (i, child) in a.iter().enumerate() {
+                    path.push(Seg::Index(i));
+                    walk(child, path, missing);
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+    let Ok(dir) = std::env::var("SHELTER_SAMPLES") else {
+        return;
+    };
+    let mut missing = std::collections::BTreeSet::new();
+    for entry in std::fs::read_dir(dir).expect("samples dir") {
+        let path = entry.expect("entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("sav") {
+            continue;
+        }
+        let root = sav::read_sav(&std::fs::read(&path).expect("read")).expect("parse");
+        walk(&root, &mut Vec::new(), &mut missing);
+    }
+    let sample: Vec<_> = missing.iter().take(40).collect();
+    assert!(
+        missing.is_empty(),
+        "{} undescribed: {sample:?}",
+        missing.len()
+    );
 }

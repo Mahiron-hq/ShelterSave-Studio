@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -532,30 +533,30 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
             &at(&["experience", "currentLevel"]),
             &o,
             |app, ui| {
-                let mut l = level;
                 let max = if app.expert() {
                     999
                 } else {
                     lim.dweller_level_max
                 };
-                let resp = ui.add(egui::DragValue::new(&mut l).range(1..=max));
-                if (resp.drag_stopped() || resp.lost_focus()) && l != level
-                    || (resp.changed() && !resp.dragged() && !resp.has_focus() && l != level)
-                {
+                let range = (1.0_f64.min(level as f64), (max as f64).max(level as f64));
+                let key = format!("level:{id}");
+                if let Some(l) = widgets::drag_number(app, ui, &key, level as f64, range, true) {
                     app.act(Action::SetLevel {
                         ids: vec![id],
-                        level: l,
+                        level: l as i64,
                     });
                 }
             },
         );
-        for (key, label) in [
-            ("experienceValue", "dw.xp"),
-            ("wastelandExperience", "k.wastelandExperience"),
-        ] {
+        for (key, label) in [("experienceValue", "dw.xp"), ("wastelandExperience", "")] {
             let path = at(&["experience", key]);
             if root.at(&path).is_some() {
-                let o = Opts::text(app.t(label)).unit(app.t("c.units.xp"));
+                let o = if label.is_empty() {
+                    Opts::at(app, &path)
+                } else {
+                    Opts::text(app.t(label))
+                }
+                .unit(app.t("c.units.xp"));
                 widgets::num_field(app, ui, &path, o);
             }
         }
@@ -583,7 +584,7 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
         widgets::num_field(app, ui, &at(&["health", "radiationValue"]), o);
         for key in ["permaDeath", "lastLevelUpdated"] {
             let path = at(&["health", key]);
-            let o = Opts::key(app, key);
+            let o = Opts::at(app, &path);
             match root.at(&path) {
                 Some(Value::Bool(_)) => widgets::bool_field(app, ui, &path, o),
                 Some(Value::Number(_)) => widgets::num_field(app, ui, &path, o),
@@ -592,7 +593,7 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
         }
         for key in ["deathTime", "deathSource"] {
             if d.get(key).is_some() {
-                let o = Opts::key(app, key);
+                let o = Opts::at(app, &at(&[key]));
                 widgets::num_field(app, ui, &at(&[key]), o);
             }
         }
@@ -643,7 +644,7 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
             "wasTemporarilyAssigned",
         ] {
             if d.get(key).is_some() {
-                let o = Opts::key(app, key);
+                let o = Opts::at(app, &at(&[key]));
                 widgets::bool_field(app, ui, &at(&[key]), o);
             }
         }
@@ -758,7 +759,7 @@ fn looks(app: &mut App, ui: &mut egui::Ui, d: &Value, id: i64, base: &[Seg]) {
             widgets::choice_field(app, ui, &join(base, &["hair"]), o, &choices);
         }
         if d.get("faceMask").is_some() {
-            let o = Opts::key(app, "faceMask");
+            let o = Opts::at(app, &join(base, &["faceMask"]));
             widgets::text_field(app, ui, &join(base, &["faceMask"]), o);
         }
     });
@@ -867,15 +868,20 @@ fn equipment(app: &mut App, ui: &mut egui::Ui, d: &Value, id: i64, base: &[Seg])
             });
         }
         if let Some(extra) = d.at(&vault::p(&["equippedPet", "extraData"])) {
-            pet_details(app, ui, extra, id);
+            let pet_id = vault::text(d, &["equippedPet", "id"]).unwrap_or_default();
+            pet_details(app, ui, extra, id, &pet_id);
         }
     });
 }
 
-fn pet_details(app: &mut App, ui: &mut egui::Ui, extra: &Value, id: i64) {
+fn pet_details(app: &mut App, ui: &mut egui::Ui, extra: &Value, id: i64, pet_id: &str) {
     let name = vault::text(extra, &["uniqueName"]).unwrap_or_default();
     let bonus = vault::text(extra, &["bonus"]).unwrap_or_default();
     let value = vault::int(extra, &["bonusValue"]).unwrap_or(0);
+    let pet_range = catalog()
+        .pet(pet_id)
+        .filter(|p| p.bonus == bonus)
+        .map(|p| (p.bonus_min, p.bonus_max));
     let key = format!("pet:{id}");
     let mut buf = app.bufs.get(&key).cloned().unwrap_or_else(|| name.clone());
     ui.add_space(4.0);
@@ -927,14 +933,25 @@ fn pet_details(app: &mut App, ui: &mut egui::Ui, extra: &Value, id: i64) {
             }
             ui.end_row();
             ui.label(app.t("dw.petBonusValue"));
-            let mut v = value;
-            let resp = ui.add(egui::DragValue::new(&mut v));
-            if v != value && !resp.dragged() {
+            let range = if app.expert() {
+                (f64::NEG_INFINITY, f64::INFINITY)
+            } else {
+                pet_range.map_or((0.0, 1000.0), |(a, b)| (a.floor(), b.ceil()))
+            };
+            let range = (range.0.min(value as f64), range.1.max(value as f64));
+            if let Some(v) = widgets::drag_number(
+                app,
+                ui,
+                &format!("petbonus:{id}"),
+                value as f64,
+                range,
+                true,
+            ) {
                 app.act(Action::SetPetDetails {
                     id,
                     name: name.clone(),
                     bonus: bonus.clone(),
-                    bonus_value: v,
+                    bonus_value: v as i64,
                 });
             }
             ui.end_row();
@@ -1011,11 +1028,11 @@ fn relations(app: &mut App, ui: &mut egui::Ui, d: &Value, id: i64, base: &[Seg],
                 });
             },
         );
-        let o = Opts::key(app, "lastChildBorn");
+        let o = Opts::at(app, &join(base, &["lastChildBorn"]));
         if d.get("lastChildBorn").is_some() {
             widgets::num_field(app, ui, &join(base, &["lastChildBorn"]), o);
         }
-        egui::CollapsingHeader::new(Opts::key(app, "ascendants").label)
+        egui::CollapsingHeader::new(Opts::at(app, &join(base, &["relations", "ascendants"])).label)
             .id_salt(("asc", id))
             .show(ui, |ui| {
                 widgets::object_form(app, ui, &join(base, &["relations", "ascendants"]), 0);

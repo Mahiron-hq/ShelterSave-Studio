@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,7 +18,7 @@
 
 use eframe::egui::{self, RichText};
 use shelter_core::actions::Action;
-use shelter_core::i18n;
+use shelter_core::fields;
 use shelter_core::json::{path_to_string, Seg, Value};
 
 use crate::app::App;
@@ -31,21 +32,16 @@ pub struct Opts {
     pub unit: String,
     pub min: Option<f64>,
     pub max: Option<f64>,
-    pub unconfirmed: bool,
     pub read_only: bool,
 }
 
 impl Opts {
-    /// Label and help from the `k.<key>` / `h.<key>` strings; unknown keys
-    /// keep the technical name and are marked as unconfirmed.
-    pub fn key(app: &App, key: &str) -> Opts {
-        let label = i18n::get(app.lang, &format!("k.{key}"));
+    /// Label and description from the field dictionary.
+    pub fn at(app: &App, path: &[Seg]) -> Opts {
+        let f = fields::describe(app.lang, path);
         Opts {
-            label: label.map_or_else(|| key.to_string(), str::to_string),
-            help: i18n::get(app.lang, &format!("h.{key}"))
-                .unwrap_or_default()
-                .to_string(),
-            unconfirmed: label.is_none(),
+            label: f.label,
+            help: f.help,
             ..Opts::default()
         }
     }
@@ -74,14 +70,26 @@ impl Opts {
     }
 }
 
-fn last_key(path: &[Seg]) -> String {
-    path.iter()
-        .rev()
-        .find_map(|s| match s {
-            Seg::Key(k) => Some(k.clone()),
-            Seg::Index(_) => None,
+/// Bold label; its description appears as a tooltip after a short hover.
+pub fn hint_label(ui: &mut egui::Ui, label: &str, help: &str) -> egui::Response {
+    let c = style::colors(ui.ctx());
+    let r = ui
+        .horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.label(RichText::new(label).font(style::bold(14.0)));
+            if !help.is_empty() {
+                ui.label(RichText::new(icons::HELP).size(12.0).color(c.muted));
+            }
         })
-        .unwrap_or_default()
+        .response;
+    if help.is_empty() {
+        r
+    } else {
+        r.on_hover_ui(|ui| {
+            ui.set_max_width(360.0);
+            ui.label(help);
+        })
+    }
 }
 
 /// Common row: label column, editor, then markers and revert button.
@@ -106,6 +114,11 @@ pub fn row(
         _ => false,
     };
     let expert = app.expert();
+    let help = if o.help.is_empty() {
+        fields::describe(app.lang, path).help
+    } else {
+        o.help.clone()
+    };
     let frame_fill = if modified {
         c.mark_soft
     } else {
@@ -131,23 +144,10 @@ pub fn row(
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(240.0_f32.min(ui.available_width() * 0.4));
-                    ui.label(RichText::new(&o.label).font(style::bold(14.0)));
-                    let mut sub = String::new();
-                    if !o.help.is_empty() {
-                        sub.push_str(&o.help);
-                    }
+                    hint_label(ui, &o.label, &help);
                     if let (Some(min), Some(max)) = (o.min, o.max) {
-                        if !sub.is_empty() {
-                            sub.push(' ');
-                        }
-                        sub.push_str(&format!("({}–{})", fmt_num(min), fmt_num(max)));
-                    }
-                    if !sub.is_empty() {
-                        ui.label(RichText::new(sub).small().color(c.muted));
-                    }
-                    if o.unconfirmed {
                         ui.label(
-                            RichText::new(format!("{} {}", icons::HELP, app.t("c.unconfirmed")))
+                            RichText::new(format!("{}–{}", fmt_num(min), fmt_num(max)))
                                 .small()
                                 .color(c.muted),
                         );
@@ -241,8 +241,105 @@ fn buf_key(path: &[Seg]) -> String {
     path_to_string(path)
 }
 
-/// Number editor: text box committed on Enter or focus loss.
-pub fn num_editor(app: &mut App, ui: &mut egui::Ui, path: &[Seg], width: f32, read_only: bool) {
+/// Range used by a number box: the norm, widened to include the current
+/// value so an out-of-norm value is never clamped just by showing it.
+fn drag_range(current: f64, min: Option<f64>, max: Option<f64>, expert: bool) -> (f64, f64) {
+    if expert {
+        return (f64::NEG_INFINITY, f64::INFINITY);
+    }
+    (
+        min.map_or(f64::NEG_INFINITY, |m| m.min(current)),
+        max.map_or(f64::INFINITY, |m| m.max(current)),
+    )
+}
+
+/// Number box that can be dragged or typed into. The value is kept in a
+/// buffer while the user drags or types and is returned once, when the edit
+/// ends, so one gesture makes one history step.
+pub fn drag_number(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    key: &str,
+    current: f64,
+    range: (f64, f64),
+    int: bool,
+) -> Option<f64> {
+    let (lo, hi) = range;
+    let mut v = app.drags.get(key).copied().unwrap_or(current);
+    let speed = if lo.is_finite() && hi.is_finite() {
+        (hi - lo) / 300.0
+    } else {
+        current.abs() / 200.0
+    };
+    let speed = speed.clamp(if int { 0.05 } else { 0.01 }, 1e6);
+    let id = ui.next_auto_id();
+    let mut dv = egui::DragValue::new(&mut v)
+        .range(lo..=hi)
+        .speed(speed)
+        .update_while_editing(false);
+    dv = if int {
+        dv.max_decimals(0)
+    } else {
+        dv.max_decimals(2)
+    };
+    let resp = ui.add(dv);
+    if resp.dragged() {
+        // egui keeps the unclamped drag position; clamp it so dragging back
+        // from past the end responds at once.
+        ui.data_mut(|d| {
+            if let Some(p) = d.get_temp::<f64>(id) {
+                d.insert_temp(id, p.clamp(lo, hi));
+            }
+        });
+    }
+    if resp.changed() {
+        app.drags.insert(key.to_string(), v);
+    }
+    if resp.dragged() || resp.has_focus() {
+        return None;
+    }
+    let v = app.drags.remove(key)?;
+    let v = if int { v.round() } else { v };
+    (v != current).then_some(v)
+}
+
+/// Number editor bound to a path: drag, arrow keys or click and type.
+/// Values too large for a drag box (such as .NET ticks) use a text box.
+pub fn num_editor(app: &mut App, ui: &mut egui::Ui, path: &[Seg], o: &Opts) {
+    let Some(open) = &app.open else { return };
+    let cur = open.doc.root().at(path).cloned();
+    let Some(Value::Number(n)) = cur else {
+        ui.label(RichText::new(cur.map(|v| short(&v)).unwrap_or_default()).font(style::mono(13.0)));
+        return;
+    };
+    let int = n.is_integer_literal();
+    let Some(value) = n.as_str().parse::<f64>().ok().filter(|v| v.abs() < 1e12) else {
+        num_text_editor(app, ui, path, 180.0, o.read_only);
+        return;
+    };
+    if o.read_only {
+        ui.label(RichText::new(fmt_num(value)).font(style::mono(13.0)));
+        return;
+    }
+    let range = drag_range(value, o.min, o.max, app.expert());
+    let key = buf_key(path);
+    if let Some(v) = drag_number(app, ui, &key, value, range, int) {
+        if int {
+            app.act(Action::SetInt {
+                path: path.to_vec(),
+                value: v as i64,
+            });
+        } else {
+            app.act(Action::SetNumber {
+                path: path.to_vec(),
+                value: v,
+            });
+        }
+    }
+}
+
+/// Text box for numbers: committed on Enter or focus loss.
+fn num_text_editor(app: &mut App, ui: &mut egui::Ui, path: &[Seg], width: f32, read_only: bool) {
     let Some(open) = &app.open else { return };
     let cur = open.doc.root().at(path).cloned();
     let Some(Value::Number(n)) = cur else {
@@ -331,10 +428,8 @@ pub fn bool_editor(app: &mut App, ui: &mut egui::Ui, path: &[Seg]) {
 }
 
 pub fn num_field(app: &mut App, ui: &mut egui::Ui, path: &[Seg], o: Opts) {
-    let ro = o.read_only;
-    row(app, ui, path, &o, |app, ui| {
-        num_editor(app, ui, path, 140.0, ro)
-    });
+    let o2 = o.clone();
+    row(app, ui, path, &o, |app, ui| num_editor(app, ui, path, &o2));
 }
 
 pub fn text_field(app: &mut App, ui: &mut egui::Ui, path: &[Seg], o: Opts) {
@@ -513,7 +608,7 @@ fn value_row(app: &mut App, ui: &mut egui::Ui, p: &[Seg], key: &str, child: &Val
     let opts = if key.starts_with('#') {
         Opts::text(key.to_string())
     } else {
-        Opts::key(app, key)
+        Opts::at(app, p)
     };
     match child {
         Value::Number(_) => num_field(app, ui, p, opts),
@@ -547,7 +642,8 @@ fn value_row(app: &mut App, ui: &mut egui::Ui, p: &[Seg], key: &str, child: &Val
                 _ => String::new(),
             };
             let title = format!("{}{count}", opts.label);
-            egui::CollapsingHeader::new(title)
+            let help = opts.help.clone();
+            let r = egui::CollapsingHeader::new(title)
                 .id_salt(path_to_string(p))
                 .default_open(false)
                 .show(ui, |ui| {
@@ -555,9 +651,11 @@ fn value_row(app: &mut App, ui: &mut egui::Ui, p: &[Seg], key: &str, child: &Val
                         object_form(app, ui, p, depth + 1);
                     }
                 });
+            if !help.is_empty() {
+                r.header_response.on_hover_text(help);
+            }
         }
     }
-    let _ = last_key(p);
 }
 
 /// Minimal Markdown for the bundled documents: headings, lists, bold.

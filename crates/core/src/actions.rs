@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -23,6 +24,7 @@ use crate::catalog::{catalog, ItemKind};
 use crate::edit::{Builder, EditError, Label, Transaction};
 use crate::integrity;
 use crate::json::{self, Number, Seg, Value};
+use crate::map;
 use crate::rules::{self, Mode, RuleError, LUNCHBOX_MAX, MAX_DWELLERS, RESOURCE_MAX};
 use crate::vault::*;
 
@@ -173,6 +175,25 @@ pub enum Action {
     SetMergeLevel {
         room: i64,
         merge: i64,
+    },
+    AddRoom {
+        kind: String,
+        row: i64,
+        col: i64,
+        merge: i64,
+        level: i64,
+    },
+    RemoveRoom {
+        room: i64,
+    },
+    MoveRoom {
+        room: i64,
+        row: i64,
+        col: i64,
+    },
+    SetRoomLevel {
+        room: i64,
+        level: i64,
     },
     RemoveRock {
         index: usize,
@@ -647,6 +668,30 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
         Action::SetMergeLevel { room, merge } => {
             set_merge(b, mode, *room, *merge)?;
             Ok((Label::new("act.mergeLevel").with("merge", merge), 1))
+        }
+        Action::AddRoom {
+            kind,
+            row,
+            col,
+            merge,
+            level,
+        } => {
+            add_room(b, mode, kind, *row, *col, *merge, *level)?;
+            Ok((Label::new("act.addRoom").with("room", kind), 1))
+        }
+        Action::RemoveRoom { room } => {
+            let kind = room_kind(b.root(), *room)?;
+            let n = remove_room(b, mode, *room)?;
+            Ok((Label::new("act.removeRoom").with("room", kind), n))
+        }
+        Action::MoveRoom { room, row, col } => {
+            let kind = room_kind(b.root(), *room)?;
+            move_room(b, mode, *room, *row, *col)?;
+            Ok((Label::new("act.moveRoom").with("room", kind), 1))
+        }
+        Action::SetRoomLevel { room, level } => {
+            set_room_level(b, mode, *room, *level)?;
+            Ok((Label::new("act.roomLevel").with("level", level), 1))
         }
         Action::RemoveRock { index } => {
             b.remove(p(&["vault", "rocks"]), *index)?;
@@ -1360,12 +1405,7 @@ fn assign_room(b: &mut Builder<'_>, mode: Mode, ids: &[i64], room: i64) -> R<usi
         if dweller_index(b.root(), *id).is_none() {
             continue;
         }
-        let rooms_len = arr(b.root(), &ROOMS).len();
-        for i in 0..rooms_len {
-            if Some(i) != target {
-                remove_number(b, pi(&ROOMS, i, &["dwellers"]), *id)?;
-            }
-        }
+        drop_from_rooms(b, *id, target)?;
         let base = dweller_path(b.root(), *id)?;
         if let Some(t) = target {
             let list = pi(&ROOMS, t, &["dwellers"]);
@@ -1521,15 +1561,381 @@ pub fn merge_fits(root: &Value, room: i64, merge: i64) -> bool {
 
 fn set_merge(b: &mut Builder<'_>, mode: Mode, room: i64, merge: i64) -> R<()> {
     let i = room_index(b.root(), room).ok_or(RuleError::NotFound)?;
-    let kind = text(&arr(b.root(), &ROOMS)[i], &["type"]).unwrap_or_default();
+    let r = arr(b.root(), &ROOMS)[i].clone();
+    let kind = text(&r, &["type"]).unwrap_or_default();
+    if map::FIXED_ROOMS.contains(&kind.as_str()) {
+        return Err(RuleError::RoomFixed.into());
+    }
     if kind == "Elevator" && mode == Mode::Normal {
         return Err(RuleError::NotAllowed.into());
     }
     rules::check_range(mode, merge, 1, rules::max_merge(&kind))?;
-    if !merge_fits(b.root(), room, merge) {
-        return Err(RuleError::RoomOverlap.into());
-    }
+    let (row, col) = (
+        int(&r, &["row"]).unwrap_or(0),
+        int(&r, &["col"]).unwrap_or(0),
+    );
+    place(b.root(), mode, &kind, row, col, merge, Some(room))?;
     set_num(b, pi(&ROOMS, i, &["mergeLevel"]), merge as f64)?;
+    let cap = 2 * merge.max(1) as usize;
+    for id in ints(&r, "dwellers").iter().skip(cap) {
+        unassign(b, *id)?;
+    }
+    Ok(())
+}
+
+fn place_error(e: map::PlaceError) -> ActionError {
+    match e {
+        map::PlaceError::OutOfGrid | map::PlaceError::Overlap => RuleError::RoomOverlap.into(),
+        map::PlaceError::Disconnected => RuleError::RoomDisconnected.into(),
+    }
+}
+
+/// Overlap is never allowed; connectivity is checked in normal mode only.
+fn place(
+    root: &Value,
+    mode: Mode,
+    kind: &str,
+    row: i64,
+    col: i64,
+    merge: i64,
+    id: Option<i64>,
+) -> R<()> {
+    let r = if mode == Mode::Normal {
+        map::check_spot(root, kind, row, col, merge, id)
+    } else {
+        map::fits(root, row, col, map::width_of(kind, merge), id)
+    };
+    r.map_err(place_error)
+}
+
+fn ints(v: &Value, key: &str) -> Vec<i64> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default()
+}
+
+fn room_kind(root: &Value, id: i64) -> R<String> {
+    let i = room_index(root, id).ok_or(RuleError::NotFound)?;
+    Ok(text(&arr(root, &ROOMS)[i], &["type"]).unwrap_or_default())
+}
+
+fn next_room_id(b: &mut Builder<'_>) -> R<i64> {
+    let counter = int(b.root(), &["constructMgr", "roomDeserializeID"]).unwrap_or(0);
+    let max = room_ids(b.root()).into_iter().max().unwrap_or(0);
+    let id = counter.max(max) + 1;
+    let path = p(&["constructMgr", "roomDeserializeID"]);
+    if b.get(&path).is_some() {
+        set_num(b, path, id as f64)?;
+    }
+    Ok(id)
+}
+
+/// A freshly built room as the game writes it.
+fn new_room(
+    root: &Value,
+    kind: &str,
+    class: &str,
+    at: (i64, i64),
+    merge: i64,
+    level: i64,
+    id: i64,
+) -> Value {
+    let keys: Vec<String> = root
+        .at(&p(&RESOURCES))
+        .and_then(Value::as_object)
+        .map(|o| o.keys().collect())
+        .unwrap_or_else(|| RESOURCE_KEYS.iter().map(|k| k.to_string()).collect());
+    let zeros = || Value::obj(keys.iter().map(|k| (k.as_str(), Value::int(0))).collect());
+    let mut fields = vec![
+        ("emergencyDone", Value::Bool(false)),
+        ("type", Value::str(kind)),
+        ("class", Value::str(class)),
+        ("mergeLevel", Value::int(merge)),
+        ("row", Value::int(at.0)),
+        ("col", Value::int(at.1)),
+        ("power", Value::Bool(true)),
+        (
+            "roomHealth",
+            Value::obj(vec![
+                ("damageValue", Value::int(0)),
+                ("initialValue", Value::int(0)),
+            ]),
+        ),
+        ("mrHandyList", Value::Array(vec![])),
+        ("rushTask", Value::int(-1)),
+        ("level", Value::int(level)),
+        ("dwellers", Value::Array(vec![])),
+        ("deadDwellers", Value::Array(vec![])),
+        ("currentStateName", Value::str("Idle")),
+        ("currentState", Value::obj(vec![])),
+        ("deserializeID", Value::int(id)),
+        ("assignedDecoration", Value::str("")),
+        ("roomVisibility", Value::Bool(false)),
+        ("roomOutline", Value::Bool(false)),
+    ];
+    match (kind, class) {
+        ("Elevator", _) => fields.push(("withHole", Value::Bool(false))),
+        ("LivingQuarters", _) => {
+            fields.push(("children", Value::Array(vec![])));
+            fields.push(("partners", Value::Array(vec![])));
+        }
+        ("Radio", _) => {
+            fields.push(("newDwellerReady", Value::Bool(false)));
+            fields.push(("onlyIncreaseHappiness", Value::Bool(true)));
+        }
+        (_, "Production" | "Consumable") => {
+            fields.push((
+                "storage",
+                Value::obj(vec![("resources", zeros()), ("bonus", zeros())]),
+            ));
+            fields.push(("numberOfProductionCycle", Value::int(0)));
+            fields.push(("ExperienceRewardIsDirty", Value::Bool(false)));
+        }
+        (_, "Training") => {
+            fields.push(("slots", Value::Array(vec![])));
+            fields.push(("dwellerWithPendingCompleteTraining", Value::Array(vec![])));
+        }
+        (_, "Crafting") => {
+            fields.push(("IngredientItemIds", Value::Array(vec![])));
+            fields.push(("CraftingItemId", Value::str("")));
+            fields.push(("CompletedTime", Value::int(0)));
+        }
+        _ => {}
+    }
+    Value::obj(fields)
+}
+
+fn add_room(
+    b: &mut Builder<'_>,
+    mode: Mode,
+    kind: &str,
+    row: i64,
+    col: i64,
+    merge: i64,
+    level: i64,
+) -> R<i64> {
+    let info = catalog().rooms.iter().find(|r| r.kind == kind);
+    if mode == Mode::Normal {
+        let info = info.ok_or(RuleError::NotInCatalog)?;
+        if map::NOT_BUILDABLE.contains(&kind) {
+            return Err(RuleError::NotAllowed.into());
+        }
+        let max_merge = if kind == "Elevator" {
+            1
+        } else {
+            info.max_merge
+        };
+        rules::check_range(mode, merge, 1, max_merge)?;
+        rules::check_range(mode, level, 1, info.levels)?;
+        if map::UNIQUE_ROOMS.contains(&kind) && map::rooms(b.root()).iter().any(|r| r.kind == kind)
+        {
+            return Err(RuleError::RoomUnique.into());
+        }
+    }
+    place(b.root(), mode, kind, row, col, merge, None)?;
+    let class = info.map_or_else(|| "Facility".to_string(), |i| i.class.clone());
+    let id = next_room_id(b)?;
+    let room = new_room(b.root(), kind, &class, (row, col), merge, level, id);
+    b.push(p(&ROOMS), room)?;
+    Ok(id)
+}
+
+/// Task ids a room owns: any non-negative number under a key containing "task".
+fn owned_tasks(v: &Value, out: &mut Vec<i64>) {
+    match v {
+        Value::Object(o) => {
+            for (k, child) in &o.0 {
+                if k.text().to_ascii_lowercase().contains("task") {
+                    if let Some(id) = child.as_i64().filter(|id| *id >= 0) {
+                        out.push(id);
+                    }
+                }
+                owned_tasks(child, out);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| owned_tasks(x, out)),
+        _ => {}
+    }
+}
+
+fn remove_tasks(b: &mut Builder<'_>, ids: &[i64]) -> R<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    for list in ["tasks", "pausedTasks"] {
+        let path = p(&["taskMgr", list]);
+        while let Some(i) = b.get(&path).and_then(Value::as_array).and_then(|a| {
+            a.iter().position(|t| {
+                t.get("id")
+                    .and_then(Value::as_i64)
+                    .is_some_and(|id| ids.contains(&id))
+            })
+        }) {
+            b.remove(path.clone(), i)?;
+        }
+    }
+    Ok(())
+}
+
+/// Takes a dweller out of every room and training slot.
+fn unassign(b: &mut Builder<'_>, id: i64) -> R<()> {
+    drop_from_rooms(b, id, None)?;
+    if let Ok(base) = dweller_path(b.root(), id) {
+        b.set(join(&base, &["savedRoom"]), Value::int(-1))?;
+        if b.get(&join(&base, &["assigned"])).is_some() {
+            b.set(join(&base, &["assigned"]), Value::Bool(false))?;
+        }
+    }
+    Ok(())
+}
+
+/// Removes a dweller from room lists and training slots, except in room `keep`.
+fn drop_from_rooms(b: &mut Builder<'_>, id: i64, keep: Option<usize>) -> R<()> {
+    let n = arr(b.root(), &ROOMS).len();
+    for i in 0..n {
+        if Some(i) == keep {
+            continue;
+        }
+        remove_number(b, pi(&ROOMS, i, &["dwellers"]), id)?;
+        remove_number(b, pi(&ROOMS, i, &["deadDwellers"]), id)?;
+        remove_number(
+            b,
+            pi(&ROOMS, i, &["dwellerWithPendingCompleteTraining"]),
+            id,
+        )?;
+        let slots = pi(&ROOMS, i, &["slots"]);
+        while let Some(j) = b.get(&slots).and_then(Value::as_array).and_then(|a| {
+            a.iter()
+                .position(|s| s.get("dwellerID").and_then(Value::as_i64) == Some(id))
+        }) {
+            let task = b
+                .get(&slots)
+                .and_then(|s| s.at(&[Seg::Index(j), Seg::Key("taskID".into())]))
+                .and_then(Value::as_i64);
+            b.remove(slots.clone(), j)?;
+            if let Some(t) = task {
+                remove_tasks(b, &[t])?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_room(b: &mut Builder<'_>, mode: Mode, id: i64) -> R<usize> {
+    let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
+    let r = arr(b.root(), &ROOMS)[i].clone();
+    let kind = text(&r, &["type"]).unwrap_or_default();
+    if map::FIXED_ROOMS.contains(&kind.as_str()) {
+        return Err(RuleError::RoomFixed.into());
+    }
+    if mode == Mode::Normal {
+        if !map::can_remove(b.root(), id) {
+            return Err(RuleError::RoomDisconnected.into());
+        }
+        if room_busy(&r) {
+            return Err(RuleError::RoomBusy.into());
+        }
+    }
+    let row = int(&r, &["row"]).unwrap_or(0);
+    let people: Vec<i64> = ints(&r, "dwellers")
+        .into_iter()
+        .chain(ints(&r, "deadDwellers"))
+        .collect();
+    let mut tasks = Vec::new();
+    owned_tasks(&r, &mut tasks);
+    remove_tasks(b, &tasks)?;
+    b.remove(p(&ROOMS), i)?;
+    for d in &people {
+        unassign(b, *d)?;
+    }
+    for handy in ints(&r, "mrHandyList") {
+        rehome_handy(b, handy, row)?;
+    }
+    for list in [&ACTORS, &DWELLERS] {
+        let n = arr(b.root(), list).len();
+        for ai in 0..n {
+            let path = pi(list, ai, &["savedRoom"]);
+            if b.get(&path).and_then(Value::as_i64) == Some(id) {
+                set_num(b, path, -1.0)?;
+            }
+        }
+    }
+    let happy = p(&["happinessManager"]);
+    if b.get(&happy).is_some() {
+        b.remove_key(happy.clone(), &format!("room{id}"))?;
+        remove_number(b, join(&happy, &["rooms"]), id)?;
+    }
+    Ok(1 + people.len())
+}
+
+/// Rooms whose removal would lose game state: bodies, couples, babies or
+/// an item being crafted.
+pub fn room_busy(r: &Value) -> bool {
+    let non_empty = |k: &str| {
+        r.get(k)
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+    };
+    non_empty("deadDwellers")
+        || non_empty("partners")
+        || non_empty("children")
+        || text(r, &["CraftingItemId"]).is_some_and(|s| !s.is_empty())
+}
+
+/// Moves a Mr. Handy to another room, preferring the same floor.
+fn rehome_handy(b: &mut Builder<'_>, handy: i64, row: i64) -> R<()> {
+    let list = map::rooms(b.root());
+    let usable =
+        |r: &&map::Placed| !map::FIXED_ROOMS.contains(&r.kind.as_str()) && !r.is_elevator();
+    let target = list
+        .iter()
+        .filter(usable)
+        .find(|r| r.row == row)
+        .or_else(|| {
+            list.iter()
+                .filter(usable)
+                .min_by_key(|r| (r.row - row).abs())
+        });
+    let actor = arr(b.root(), &ACTORS)
+        .iter()
+        .position(|a| int(a, &["serializeId"]) == Some(handy));
+    let target_id = match target {
+        Some(t) => {
+            let ti = room_index(b.root(), t.id).ok_or(RuleError::NotFound)?;
+            b.push(pi(&ROOMS, ti, &["mrHandyList"]), Value::int(handy))?;
+            t.id
+        }
+        None => -1,
+    };
+    if let Some(ai) = actor {
+        set_num(b, pi(&ACTORS, ai, &["savedRoom"]), target_id as f64)?;
+    }
+    Ok(())
+}
+
+fn move_room(b: &mut Builder<'_>, mode: Mode, id: i64, row: i64, col: i64) -> R<()> {
+    let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
+    let r = map::placed(&arr(b.root(), &ROOMS)[i]).ok_or(RuleError::NotFound)?;
+    if map::FIXED_ROOMS.contains(&r.kind.as_str()) {
+        return Err(RuleError::RoomFixed.into());
+    }
+    place(b.root(), mode, &r.kind, row, col, r.merge, Some(id))?;
+    set_num(b, pi(&ROOMS, i, &["row"]), row as f64)?;
+    set_num(b, pi(&ROOMS, i, &["col"]), col as f64)?;
+    Ok(())
+}
+
+fn set_room_level(b: &mut Builder<'_>, mode: Mode, id: i64, level: i64) -> R<()> {
+    let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
+    let kind = text(&arr(b.root(), &ROOMS)[i], &["type"]).unwrap_or_default();
+    let max = catalog()
+        .rooms
+        .iter()
+        .find(|r| r.kind == kind)
+        .map_or(catalog().limits.room_level_max, |r| r.levels);
+    rules::check_range(mode, level, 1, max)?;
+    set_num(b, pi(&ROOMS, i, &["level"]), level as f64)?;
     Ok(())
 }
 
@@ -1875,5 +2281,174 @@ mod tests {
         )
         .unwrap();
         assert!(root.to_compact().contains("\"Food\":100.00"));
+    }
+
+    fn vault_with_lift() -> Value {
+        let mut root = json::parse(
+            r#"{"taskMgr":{"id":9,"tasks":[{"id":7}],"pausedTasks":[]},"dwellers":{"dwellers":[],"actors":[],"id":0,"mrhId":1},
+            "vault":{"rooms":[
+              {"type":"Entrance","class":"Facility","mergeLevel":2,"row":0,"col":3,"level":1,"dwellers":[],"deadDwellers":[],"mrHandyList":[],"deserializeID":1},
+              {"type":"Elevator","class":"Utility","mergeLevel":1,"row":0,"col":9,"level":1,"dwellers":[],"deadDwellers":[],"mrHandyList":[],"deserializeID":2},
+              {"type":"Elevator","class":"Utility","mergeLevel":1,"row":1,"col":9,"level":1,"dwellers":[],"deadDwellers":[],"mrHandyList":[],"deserializeID":3},
+              {"type":"LivingQuarters","class":"Facility","mergeLevel":1,"row":1,"col":10,"level":1,"dwellers":[],"deadDwellers":[],"mrHandyList":[],"deserializeID":4,"children":[],"partners":[]},
+              {"type":"Gym","class":"Training","mergeLevel":1,"row":1,"col":13,"level":1,"dwellers":[],"deadDwellers":[],"mrHandyList":[],"deserializeID":5,"slots":[],"dwellerWithPendingCompleteTraining":[]}],
+              "rocks":[{"r":1,"c":20}],"storage":{"resources":{"Nuka":10,"Food":5}},"inventory":{"items":[]}},
+            "constructMgr":{"roomDeserializeID":5},
+            "happinessManager":{"room5":[],"rooms":[5],"dwellers":[]}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Expert,
+            original: &orig,
+        };
+        for name in ["A", "B"] {
+            run(
+                &mut root,
+                &ctx,
+                &Action::AddDweller {
+                    first: name.into(),
+                    last: "X".into(),
+                    gender: 1,
+                },
+            )
+            .unwrap();
+        }
+        run(
+            &mut root,
+            &ctx,
+            &Action::AssignRoom {
+                ids: vec![1],
+                room: 4,
+            },
+        )
+        .unwrap();
+        run(
+            &mut root,
+            &ctx,
+            &Action::AssignRoom {
+                ids: vec![2],
+                room: 5,
+            },
+        )
+        .unwrap();
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetRaw {
+                path: pi(&ROOMS, 4, &["slots"]),
+                json: r#"[{"needLvUp":false,"dwellerID":2,"taskID":7}]"#.into(),
+            },
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn room_editing_keeps_vault_consistent() {
+        let mut root = vault_with_lift();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let add = |kind: &str, row, col| Action::AddRoom {
+            kind: kind.into(),
+            row,
+            col,
+            merge: 1,
+            level: 1,
+        };
+        let err = |r: R<Transaction>| match r {
+            Err(ActionError::Rule(e)) => e,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            err(run(&mut root, &ctx, &add("Storage", 2, 10))),
+            RuleError::RoomDisconnected
+        );
+        assert_eq!(
+            err(run(&mut root, &ctx, &add("Storage", 1, 12))),
+            RuleError::RoomOverlap
+        );
+        assert_eq!(
+            err(run(&mut root, &ctx, &add("Storage", 1, 19))),
+            RuleError::RoomOverlap
+        );
+        assert_eq!(
+            err(run(&mut root, &ctx, &add("Entrance", 1, 16))),
+            RuleError::NotAllowed
+        );
+        run(&mut root, &ctx, &add("Storage", 1, 16)).unwrap();
+        assert_eq!(int(&root, &["constructMgr", "roomDeserializeID"]), Some(6));
+        let last = arr(&root, &ROOMS).last().cloned().unwrap();
+        assert_eq!(int(&last, &["deserializeID"]), Some(6));
+        assert!(last.get("storage").is_none());
+        run(&mut root, &ctx, &add("Overseer", 1, 0)).unwrap_err();
+        run(&mut root, &ctx, &add("Elevator", 2, 9)).unwrap();
+        run(&mut root, &ctx, &add("Overseer", 2, 10)).unwrap();
+        assert_eq!(
+            err(run(&mut root, &ctx, &add("Overseer", 2, 3))),
+            RuleError::RoomUnique
+        );
+
+        assert_eq!(
+            err(run(&mut root, &ctx, &Action::RemoveRoom { room: 3 })),
+            RuleError::RoomDisconnected
+        );
+        assert_eq!(
+            err(run(&mut root, &ctx, &Action::RemoveRoom { room: 1 })),
+            RuleError::RoomFixed
+        );
+        assert_eq!(
+            err(run(
+                &mut root,
+                &ctx,
+                &Action::MoveRoom {
+                    room: 6,
+                    row: 3,
+                    col: 10
+                }
+            )),
+            RuleError::RoomDisconnected
+        );
+        run(
+            &mut root,
+            &ctx,
+            &Action::MoveRoom {
+                room: 6,
+                row: 2,
+                col: 16,
+            },
+        )
+        .unwrap_err();
+        run(
+            &mut root,
+            &ctx,
+            &Action::MoveRoom {
+                room: 6,
+                row: 2,
+                col: 13,
+            },
+        )
+        .unwrap();
+
+        let tx = run(&mut root, &ctx, &Action::RemoveRoom { room: 5 }).unwrap();
+        assert_eq!(tx.affected, 2);
+        assert!(room_index(&root, 5).is_none());
+        assert!(arr(&root, &["taskMgr", "tasks"]).is_empty());
+        assert!(root.at(&p(&["happinessManager", "room5"])).is_none());
+        assert!(arr(&root, &["happinessManager", "rooms"]).is_empty());
+        let d = &arr(&root, &DWELLERS)[dweller_index(&root, 2).unwrap()];
+        assert_eq!(int(d, &["savedRoom"]), Some(-1));
+        assert_eq!(arr(&root, &DWELLERS).len(), 2);
+        assert!(
+            integrity::check(&root).is_empty(),
+            "{:?}",
+            integrity::check(&root)
+        );
+
+        run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 3 }).unwrap();
+        run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 4 }).unwrap_err();
     }
 }

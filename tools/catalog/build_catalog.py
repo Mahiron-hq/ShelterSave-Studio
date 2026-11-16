@@ -1,6 +1,6 @@
 # ShelterSave-Studio
 # Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Builds data/catalog.json from an installed copy of Fallout Shelter (PC).
 
 Only identifiers, numbers and names are taken from the game files.

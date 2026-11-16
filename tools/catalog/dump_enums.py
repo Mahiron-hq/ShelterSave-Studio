@@ -1,6 +1,6 @@
 # ShelterSave-Studio
 # Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Extracts enum tables needed by build_catalog.py from ILSpy output of Assembly-CSharp.dll."""
 
 import argparse

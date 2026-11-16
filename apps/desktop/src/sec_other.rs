@@ -3,7 +3,8 @@
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, version 3 of the License.
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -178,7 +179,8 @@ fn block(app: &mut App, ui: &mut egui::Ui, title: &str, roots: &[&[&str]]) {
             else {
                 continue;
             };
-            let label = Opts::key(app, r.last().copied().unwrap_or_default()).label;
+            let o = Opts::at(app, &path);
+            let label = o.label.clone();
             match v {
                 Value::Object(_) | Value::Array(_) => {
                     egui::CollapsingHeader::new(label)
@@ -191,14 +193,11 @@ fn block(app: &mut App, ui: &mut egui::Ui, title: &str, roots: &[&[&str]]) {
                 Value::Null => {
                     ui.label(format!("{label}: null"));
                 }
-                _ => {
-                    let o = Opts::key(app, r.last().copied().unwrap_or_default());
-                    match v {
-                        Value::Bool(_) => widgets::bool_field(app, ui, &path, o),
-                        Value::Number(_) => widgets::num_field(app, ui, &path, o),
-                        _ => widgets::text_field(app, ui, &path, o),
-                    }
-                }
+                _ => match v {
+                    Value::Bool(_) => widgets::bool_field(app, ui, &path, o),
+                    Value::Number(_) => widgets::num_field(app, ui, &path, o),
+                    _ => widgets::text_field(app, ui, &path, o),
+                },
             }
         }
     });
