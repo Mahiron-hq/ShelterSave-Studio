@@ -42,6 +42,11 @@ pub enum Action {
         path: Vec<Seg>,
         value: f64,
     },
+    /// Integer field set exactly (ticks and other large numbers).
+    SetInt {
+        path: Vec<Seg>,
+        value: i64,
+    },
     SetText {
         path: Vec<Seg>,
         value: String,
@@ -53,6 +58,10 @@ pub enum Action {
     /// Any JSON value as text (expert mode).
     SetRaw {
         path: Vec<Seg>,
+        json: String,
+    },
+    /// Replaces the whole save with imported JSON.
+    SetRawRoot {
         json: String,
     },
     /// Restores one value to the file as opened.
@@ -257,6 +266,29 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
                 1,
             ))
         }
+        Action::SetInt { path, value } => {
+            field_rule(b.root(), path, mode, *value as f64)?;
+            match b.get(path).ok_or(RuleError::NotFound)? {
+                Value::Number(n) if n.is_integer_literal() => {}
+                Value::Number(_) => {
+                    return dispatch(
+                        b,
+                        ctx,
+                        &Action::SetNumber {
+                            path: path.clone(),
+                            value: *value as f64,
+                        },
+                    );
+                }
+                _ if mode == Mode::Expert => {}
+                _ => return Err(RuleError::WrongType.into()),
+            }
+            b.set(path.clone(), Value::int(*value))?;
+            Ok((
+                Label::new("act.setValue").with("path", json::path_to_string(path)),
+                1,
+            ))
+        }
         Action::SetText { path, value } => {
             let cur = b.get(path).ok_or(RuleError::NotFound)?;
             if !matches!(cur, Value::String(_)) && mode == Mode::Normal {
@@ -288,6 +320,14 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
                 Label::new("act.setValue").with("path", json::path_to_string(path)),
                 1,
             ))
+        }
+        Action::SetRawRoot { json } => {
+            let v = json::parse(json).map_err(|e| ActionError::BadJson(e.to_string()))?;
+            if v.as_object().is_none() {
+                return Err(RuleError::WrongType.into());
+            }
+            b.set(Vec::new(), v)?;
+            Ok((Label::new("act.importJson"), 1))
         }
         Action::RevertValue { path } => {
             let orig = crate::diff::original_at(ctx.original, b.root(), path)
