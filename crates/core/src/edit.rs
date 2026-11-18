@@ -74,6 +74,9 @@ pub struct Transaction {
     pub ops: Vec<Op>,
     /// Records (dwellers, items, rooms...) touched by the action.
     pub affected: usize,
+    /// The action that made this step, so it can be repeated on a newer file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -478,6 +481,7 @@ mod tests {
             label: Label::new("t"),
             ops,
             affected: 1,
+            action: None,
         });
         assert_eq!(root.to_compact(), r#"{"a":[2,3],"b":{"x":2.00,"y":7}}"#);
         h.undo(&mut root).unwrap();

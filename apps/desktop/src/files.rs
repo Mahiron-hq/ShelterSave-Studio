@@ -213,3 +213,35 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 }
+
+/// Unsaved edits kept on disk, so they survive a crash of the editor.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Recovery {
+    pub path: Option<PathBuf>,
+    pub session: shelter_core::document::Session,
+}
+
+fn recovery_file() -> Option<PathBuf> {
+    crate::settings::Settings::dir().map(|d| d.join("recovery.json"))
+}
+
+pub fn write_recovery(data: &str) -> std::io::Result<()> {
+    let Some(path) = recovery_file() else {
+        return Ok(());
+    };
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    write_atomic(&path, data.as_bytes())
+}
+
+pub fn read_recovery() -> Option<Recovery> {
+    let text = fs::read_to_string(recovery_file()?).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+pub fn clear_recovery() {
+    if let Some(path) = recovery_file() {
+        let _ = fs::remove_file(path);
+    }
+}

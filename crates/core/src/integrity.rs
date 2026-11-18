@@ -347,6 +347,8 @@ pub fn check(root: &Value) -> Vec<Issue> {
     check_lunchboxes(root, &mut out);
     check_tasks(root, &mut out);
     check_requirements(root, &ids, &mut out);
+    check_locked_rooms(root, &mut out);
+    check_room_shapes(root, &mut out);
     out
 }
 
@@ -517,6 +519,125 @@ fn check_requirements(root: &Value, ids: &HashMap<i64, usize>, out: &mut Vec<Iss
     }
 }
 
+/// The game crashes on load when a built room is still locked in the blueprint book.
+fn check_locked_rooms(root: &Value, out: &mut Vec<Issue>) {
+    let mut seen = HashSet::new();
+    for (i, r) in arr(root, &ROOMS).iter().enumerate() {
+        let Some(kind) = text(r, &["type"]) else {
+            continue;
+        };
+        if !seen.insert(kind.clone()) {
+            continue;
+        }
+        if let Some(id) = crate::actions::room_lock(root, &kind) {
+            out.push(
+                Issue::new(
+                    "room_locked",
+                    Severity::Error,
+                    seg_path(&ROOMS, i, &["type"]),
+                )
+                .param("room", kind)
+                .param("objective", id),
+            );
+        }
+    }
+}
+
+/// The game has models only for some sizes and upgrade levels; it hangs on others.
+fn check_room_shapes(root: &Value, out: &mut Vec<Issue>) {
+    for (i, r) in arr(root, &ROOMS).iter().enumerate() {
+        let Some(kind) = text(r, &["type"]) else {
+            continue;
+        };
+        if matches!(kind.as_str(), "Elevator" | "Entrance" | "FakeWasteland") {
+            continue;
+        }
+        let Some(info) = crate::catalog::catalog().room(&kind) else {
+            continue;
+        };
+        let merge = int(r, &["mergeLevel"]).unwrap_or(1);
+        let level = int(r, &["level"]).unwrap_or(1);
+        let max = info.max_level(merge);
+        if max == 0 || level < 1 || level > max {
+            out.push(
+                Issue::new("room_shape", Severity::Error, seg_path(&ROOMS, i, &[]))
+                    .param("room", kind)
+                    .param("merge", merge)
+                    .param("level", level),
+            );
+        }
+    }
+}
+
+/// Nearest size the game has that still fits on the map, then a level that size has.
+fn fix_room_shape(b: &mut Builder<'_>, path: &[Seg]) -> Result<bool, EditError> {
+    let Some(r) = b.get(path).cloned() else {
+        return Ok(false);
+    };
+    let Some(info) = text(&r, &["type"]).and_then(|k| crate::catalog::catalog().room(&k).cloned())
+    else {
+        return Ok(false);
+    };
+    let merge = int(&r, &["mergeLevel"]).unwrap_or(1);
+    let level = int(&r, &["level"]).unwrap_or(1);
+    let (row, col) = (
+        int(&r, &["row"]).unwrap_or(0),
+        int(&r, &["col"]).unwrap_or(0),
+    );
+    let id = int(&r, &["deserializeID"]);
+    let mut merges = info.merges();
+    merges.sort_by_key(|m| ((m - merge).abs(), -m));
+    let Some(new_merge) = merges.into_iter().find(|m| {
+        *m == merge
+            || crate::map::fits(b.root(), row, col, crate::map::width_of(&info.kind, *m), id)
+                .is_ok()
+    }) else {
+        return Ok(false);
+    };
+    let new_level = level.clamp(1, info.max_level(new_merge).max(1));
+    let mut changed = false;
+    for (key, old, new) in [
+        ("mergeLevel", merge, new_merge),
+        ("level", level, new_level),
+    ] {
+        if old != new {
+            let mut p = path.to_vec();
+            p.push(Seg::Key(key.into()));
+            b.set(p, Value::int(new))?;
+            changed = true;
+        }
+    }
+    Ok(changed)
+}
+
+fn unlock_objective(b: &mut Builder<'_>, id: &str) -> Result<bool, EditError> {
+    let mut changed = false;
+    for list in ["objectivesInProgress", "completed"] {
+        let lp = p(&["unlockableMgr", list]);
+        while let Some(i) = b.get(&lp).and_then(Value::as_array).and_then(|a| {
+            a.iter().position(|e| {
+                e.as_text()
+                    .or_else(|| e.get("objectiveID").and_then(Value::as_text))
+                    .as_deref()
+                    == Some(id)
+            })
+        }) {
+            b.remove(lp.clone(), i)?;
+            changed = true;
+        }
+    }
+    let claimed = p(&["unlockableMgr", "claimed"]);
+    let has = b
+        .get(&claimed)
+        .and_then(Value::as_array)
+        .is_some_and(|a| a.iter().any(|v| v.as_text().as_deref() == Some(id)));
+    if !has && b.get(&claimed).is_some() {
+        b.push(claimed, Value::str(id))?;
+        changed = true;
+    }
+    Ok(changed)
+}
+
 fn param<'a>(issue: &'a Issue, key: &str) -> Option<&'a str> {
     issue
         .params
@@ -571,6 +692,11 @@ pub fn fix(b: &mut Builder<'_>, issue: &Issue) -> Result<bool, EditError> {
                 Value::int((c & 0x00ff_ffff) | 0xff00_0000),
             )
         }
+        "room_shape" => fix_room_shape(b, &issue.path),
+        "room_locked" => match param(issue, "objective") {
+            Some(id) => unlock_objective(b, id),
+            None => Ok(false),
+        },
         "happiness_list_mismatch" | "happiness_stale" => {
             let rooms: HashSet<i64> = room_ids(b.root()).into_iter().collect();
             let ids: HashSet<i64> = dweller_ids(b.root()).into_iter().collect();
@@ -696,5 +822,24 @@ mod tests {
         fix_all(&mut b).unwrap();
         let left: Vec<Issue> = check(b.root()).into_iter().filter(|i| i.fixable).collect();
         assert!(left.is_empty(), "{left:?}");
+    }
+
+    #[test]
+    fn workshop_of_wrong_size_is_widened() {
+        let mut root = parse(
+            r#"{"vault":{"rooms":[{"type":"Elevator","mergeLevel":1,"row":0,"col":9,"level":1,"deserializeID":1},
+            {"type":"WeaponFactory","class":"Crafting","mergeLevel":1,"row":0,"col":10,"level":1,"deserializeID":2},
+            {"type":"BarberShop","class":"Training","mergeLevel":2,"row":0,"col":3,"level":3,"deserializeID":3}]}}"#,
+        )
+        .unwrap();
+        let codes: Vec<&str> = check(&root).iter().map(|i| i.code).collect();
+        assert_eq!(codes, ["room_shape", "room_shape"]);
+        let mut b = Builder::new(&mut root);
+        fix_all(&mut b).unwrap();
+        b.finish();
+        assert!(check(&root).is_empty());
+        let rooms = arr(&root, &ROOMS);
+        assert_eq!(int(&rooms[1], &["mergeLevel"]), Some(3));
+        assert_eq!(int(&rooms[2], &["level"]), Some(2));
     }
 }

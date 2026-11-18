@@ -64,7 +64,19 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 last,
                 gender,
             } => new_dweller(app, ui, first, last, gender),
+            Modal::FromJournal {
+                pets,
+                query,
+                pick,
+                bonus,
+            } => from_journal(app, ui, pets, query, pick, bonus),
             Modal::Restore => restore(app, ui),
+            Modal::Recover(rec) => recover(app, ui, rec.clone()),
+            Modal::Import {
+                file,
+                dwellers,
+                picked,
+            } => import(app, ui, file, dwellers, picked),
         };
     });
     let escape_closes = !matches!(modal, Modal::FirstRun);
@@ -146,16 +158,25 @@ fn first_run(app: &mut App, ui: &mut egui::Ui) -> Outcome {
 }
 
 fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
-    let Some(open) = &app.open else {
+    let Some(report) = app.save_report() else {
         return Outcome::Close;
     };
-    let report = open.doc.save_report();
     let changed_on_disk = app.changed_on_disk();
     let c = style::colors(ui.ctx());
     title(ui, icons::SAVE, &app.t("review.title"));
     ui.label(
         RichText::new(format!("{}  {}", icons::WARN, app.t("review.closeGame"))).color(c.muted),
     );
+    if app.game_running {
+        callout(
+            ui,
+            c.danger_soft,
+            c.danger,
+            icons::ALERT,
+            &app.t("tb.gameRunning"),
+            &app.t("tb.gameRunningHelp"),
+        );
+    }
     if changed_on_disk {
         callout(
             ui,
@@ -174,32 +195,87 @@ fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
     if report.changes.is_empty() {
         ui.label(RichText::new(app.t("review.noChanges")).color(c.muted));
     } else {
-        let row_h = 22.0;
+        let root = app
+            .open
+            .as_ref()
+            .map(|o| o.doc.shared_root())
+            .unwrap_or_else(|| std::sync::Arc::new(shelter_core::json::Value::Null));
+        let original = app
+            .open
+            .as_ref()
+            .map(|o| o.doc.original().clone())
+            .unwrap_or(shelter_core::json::Value::Null);
+        let expert = app.expert();
         egui::ScrollArea::vertical()
             .id_salt("changes")
             .max_height(260.0)
-            .show_rows(ui, row_h, report.changes.len(), |ui, range| {
-                for ch in &report.changes[range] {
-                    ui.horizontal(|ui| {
-                        let (icon, col) = match ch.kind {
-                            ChangeKind::Changed => (icons::PENCIL, c.mark),
-                            ChangeKind::Added => (icons::PLUS, c.success),
-                            ChangeKind::Removed => (icons::TRASH, c.danger),
-                        };
-                        ui.label(RichText::new(icon).color(col));
-                        ui.label(RichText::new(path_to_string(&ch.path)).font(style::mono(12.0)));
-                        if let Some(b) = &ch.before {
-                            ui.label(
-                                RichText::new(b)
-                                    .font(style::mono(12.0))
-                                    .color(c.muted)
-                                    .strikethrough(),
-                            );
+            .show(ui, |ui| {
+                for ch in report.changes.iter().take(300) {
+                    let (icon, col) = match ch.kind {
+                        ChangeKind::Changed => (icons::PENCIL, c.mark),
+                        ChangeKind::Added => (icons::PLUS, c.success),
+                        ChangeKind::Removed => (icons::TRASH, c.danger),
+                    };
+                    let mut job = egui::text::LayoutJob::default();
+                    let fmt = |color: egui::Color32| egui::TextFormat {
+                        font_id: egui::FontId::proportional(13.0),
+                        color,
+                        ..Default::default()
+                    };
+                    job.append(&format!("{icon}  "), 0.0, fmt(col));
+                    // A removed entry is gone from the current file, so name it from the original.
+                    let base = if matches!(ch.kind, ChangeKind::Removed) {
+                        &original
+                    } else {
+                        &root
+                    };
+                    job.append(
+                        &crate::sec_save::path_title(app, base, &ch.path),
+                        0.0,
+                        fmt(c.text),
+                    );
+                    let num = |s: &String| match s.parse::<f64>() {
+                        Ok(v)
+                            if s.bytes()
+                                .all(|b| b.is_ascii_digit() || b == b'.' || b == b'-') =>
+                        {
+                            crate::widgets::fmt_num(v)
                         }
-                        if let Some(a) = &ch.after {
-                            ui.label(RichText::new(format!("→ {a}")).font(style::mono(12.0)));
+                        _ => s.clone(),
+                    };
+                    // Whole objects and long lists are named by the path alone.
+                    let whole = |s: &&String| !(s.ends_with(" keys}") || s.ends_with(" items]"));
+                    let before = ch.before.as_ref().filter(whole).map(num);
+                    let after = ch.after.as_ref().filter(whole).map(num);
+                    match (&before, &after) {
+                        (Some(b), Some(a)) => {
+                            job.append(&format!(":  {b}"), 0.0, fmt(c.muted));
+                            job.append(&format!("  →  {a}"), 0.0, fmt(c.text));
                         }
-                    });
+                        (None, Some(a)) => job.append(&format!(":  {a}"), 0.0, fmt(c.text)),
+                        (Some(b), None) => job.append(&format!(":  {b}"), 0.0, fmt(c.muted)),
+                        (None, None) => {}
+                    }
+                    ui.add(egui::Label::new(job).wrap());
+                    if expert {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(path_to_string(&ch.path))
+                                    .font(style::mono(11.0))
+                                    .color(c.muted),
+                            )
+                            .wrap(),
+                        );
+                    }
+                }
+                if report.changes.len() > 300 {
+                    ui.label(
+                        RichText::new(app.tf(
+                            "review.more",
+                            &[("n", (report.changes.len() - 300).to_string())],
+                        ))
+                        .color(c.muted),
+                    );
                 }
             });
     }
@@ -220,12 +296,15 @@ fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                     (&report.old_issues, app.t("integ.old")),
                 ] {
                     for i in list.iter() {
-                        ui.label(format!(
-                            "{}  {} — {}",
-                            icons::ALERT,
-                            crate::sec_save::issue_text(app, i),
-                            label
-                        ));
+                        ui.add(
+                            egui::Label::new(format!(
+                                "{}  {} — {}",
+                                icons::ALERT,
+                                crate::sec_save::issue_text(app, i),
+                                label
+                            ))
+                            .wrap(),
+                        );
                     }
                 }
             });
@@ -248,16 +327,24 @@ fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                     (&report.old_warnings, app.t("integ.old")),
                 ] {
                     for w in list.iter() {
-                        ui.label(
-                            RichText::new(format!(
-                                "{}  {} · {} = {} — {}",
-                                icons::WARN,
-                                app.t(&format!("warn.{}", w.code)),
-                                path_to_string(&w.path),
-                                w.value,
-                                label
-                            ))
-                            .color(c.warning),
+                        let place = app
+                            .open
+                            .as_ref()
+                            .map(|o| crate::sec_save::path_title(app, o.doc.root(), &w.path))
+                            .unwrap_or_default();
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(format!(
+                                    "{}  {} · {} = {} — {}",
+                                    icons::WARN,
+                                    app.t(&format!("warn.{}", w.code)),
+                                    place,
+                                    w.value,
+                                    label
+                                ))
+                                .color(c.warning),
+                            )
+                            .wrap(),
                         );
                     }
                 }
@@ -376,6 +463,23 @@ fn settings(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                 ui.radio_value(&mut app.settings.confirm_mass, true, on);
                 ui.radio_value(&mut app.settings.confirm_mass, false, off);
             });
+            let (l, h) = (app.t("set.dwellerScroll"), app.t("set.dwellerScrollHelp"));
+            let (keep, top) = (
+                app.t("set.dwellerScroll.shared"),
+                app.t("set.dwellerScroll.top"),
+            );
+            setting_row(ui, &l, &h, |ui| {
+                ui.radio_value(
+                    &mut app.settings.dweller_scroll,
+                    crate::settings::DwellerScroll::Shared,
+                    keep,
+                );
+                ui.radio_value(
+                    &mut app.settings.dweller_scroll,
+                    crate::settings::DwellerScroll::Top,
+                    top,
+                );
+            });
             ui.separator();
             ui.label(RichText::new(app.t("set.files")).font(style::bold(16.0)));
             let (l, h) = (app.t("set.backups"), app.t("set.backupsHelp"));
@@ -407,6 +511,40 @@ fn settings(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                             .open_url(egui::OpenUrl::new_tab(format!("file:///{}", d.display())));
                     }
                 }
+            });
+            let found = app
+                .art
+                .game_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_default();
+            let status = match app.art.status() {
+                crate::art::Status::Loading => app.t("art.loading"),
+                crate::art::Status::NoGame => app.t("set.gameDirNone"),
+                crate::art::Status::Mismatch => app.t("set.gameDirMismatch"),
+                crate::art::Status::Ready => app.tf("set.gameDirFound", &[("path", found)]),
+            };
+            let (l, h, choose, auto) = (
+                app.t("set.gameDir"),
+                app.t("set.gameDirHelp"),
+                app.t("set.choose"),
+                app.t("set.gameDirAuto"),
+            );
+            setting_row(ui, &l, &h, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(&status).small());
+                    ui.horizontal(|ui| {
+                        if ui.button(choose).clicked() {
+                            if let Some(d) = rfd::FileDialog::new().pick_folder() {
+                                app.settings.game_dir = Some(d);
+                                app.art.reset();
+                            }
+                        }
+                        if app.settings.game_dir.is_some() && ui.button(auto).clicked() {
+                            app.settings.game_dir = None;
+                            app.art.reset();
+                        }
+                    });
+                });
             });
             let l = app.t("set.backupKeep");
             setting_row(ui, &l, "", |ui| {
@@ -472,6 +610,115 @@ fn settings(app: &mut App, ui: &mut egui::Ui) -> Outcome {
         app.modals.push(Modal::Settings);
         return Outcome::Replace(Modal::ExpertConfirm);
     }
+    out
+}
+
+fn import(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    file: &str,
+    dwellers: &[(String, String)],
+    picked: &mut std::collections::BTreeSet<usize>,
+) -> Outcome {
+    let c = style::colors(ui.ctx());
+    title(
+        ui,
+        icons::DOWNLOAD,
+        &app.tf("dw.importTitle", &[("file", file.to_string())]),
+    );
+    ui.add(egui::Label::new(RichText::new(app.t("dw.importNote")).color(c.muted)).wrap());
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        if ui.small_button(app.t("c.selectAll")).clicked() {
+            *picked = (0..dwellers.len()).collect();
+        }
+        if ui.small_button(app.t("c.selectNone")).clicked() {
+            picked.clear();
+        }
+    });
+    // Room for the heading, note and buttons on a short window.
+    let list_h = (ui.ctx().content_rect().height() - 320.0).clamp(120.0, 400.0);
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, true])
+        .min_scrolled_height(list_h)
+        .max_height(list_h)
+        .show(ui, |ui| {
+            for (i, (label, _)) in dwellers.iter().enumerate() {
+                let mut on = picked.contains(&i);
+                if ui.checkbox(&mut on, label).changed() {
+                    if on {
+                        picked.insert(i);
+                    } else {
+                        picked.remove(&i);
+                    }
+                }
+            }
+        });
+    ui.add_space(8.0);
+    let mut out = Outcome::Keep;
+    ui.horizontal(|ui| {
+        let text = app.tf("dw.importGo", &[("n", picked.len().to_string())]);
+        if ui
+            .add_enabled(!picked.is_empty(), egui::Button::new(text))
+            .clicked()
+        {
+            let mut done = 0;
+            for i in picked.iter() {
+                if app.act(shelter_core::actions::Action::ImportDweller {
+                    json: dwellers[*i].1.clone(),
+                }) {
+                    done += 1;
+                }
+            }
+            app.toast(app.tf("dw.importDone", &[("n", done.to_string())]), false);
+            out = Outcome::Close;
+        }
+        if ui.button(app.t("c.cancel")).clicked() {
+            out = Outcome::Close;
+        }
+    });
+    out
+}
+
+fn recover(app: &mut App, ui: &mut egui::Ui, rec: std::rc::Rc<crate::files::Recovery>) -> Outcome {
+    let c = style::colors(ui.ctx());
+    title(ui, icons::HISTORY, &app.t("recover.title"));
+    // Only the file name goes into the heading: a long path would not wrap there.
+    let file = rec.path.as_ref().and_then(|p| p.file_name()).map_or_else(
+        || rec.session.file_name.clone(),
+        |n| n.to_string_lossy().to_string(),
+    );
+    let steps = rec.session.history.done().len();
+    callout(
+        ui,
+        c.warning_soft,
+        c.warning,
+        icons::WARN,
+        &file,
+        &app.tf("recover.text", &[("n", steps.to_string())]),
+    );
+    if let Some(path) = &rec.path {
+        ui.add(
+            egui::Label::new(
+                RichText::new(path.display().to_string())
+                    .small()
+                    .color(c.muted),
+            )
+            .wrap(),
+        );
+    }
+    ui.add_space(8.0);
+    let mut out = Outcome::Keep;
+    ui.horizontal(|ui| {
+        if primary(ui, &app.t("recover.restore")) {
+            app.recover(&rec);
+            out = Outcome::Close;
+        }
+        if ui.button(app.t("recover.discard")).clicked() {
+            crate::files::clear_recovery();
+            out = Outcome::Close;
+        }
+    });
     out
 }
 
@@ -743,6 +990,231 @@ fn new_dweller(
                         .and_then(|d| shelter_core::vault::int(d, &["serializeId"]));
             }
             out = Outcome::Close;
+        }
+        if ui.button(app.t("c.cancel")).clicked() {
+            out = Outcome::Close;
+        }
+    });
+    out
+}
+
+/// Adds a legendary dweller or pet the way the game gives one, with its journal entry.
+fn from_journal(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    pets: &mut bool,
+    query: &mut String,
+    pick: &mut Option<String>,
+    bonus: &mut f64,
+) -> Outcome {
+    use shelter_core::vault;
+    let c = style::colors(ui.ctx());
+    title(ui, icons::STAR, &app.t("dw.journalTitle"));
+    ui.add(egui::Label::new(RichText::new(app.t("dw.journalHelp")).color(c.muted)).wrap());
+    ui.add_space(6.0);
+    let root = app
+        .open
+        .as_ref()
+        .map(|o| o.doc.shared_root())
+        .unwrap_or_else(|| std::sync::Arc::new(shelter_core::json::Value::Null));
+    ui.horizontal(|ui| {
+        if ui
+            .selectable_label(!*pets, app.t("dw.journalDwellers"))
+            .clicked()
+            && *pets
+        {
+            *pets = false;
+            *pick = None;
+        }
+        if ui
+            .selectable_label(*pets, app.t("dw.journalPets"))
+            .clicked()
+            && !*pets
+        {
+            *pets = true;
+            *pick = None;
+        }
+    });
+    ui.add(
+        egui::TextEdit::singleline(query)
+            .hint_text(app.t("c.search"))
+            .desired_width(320.0),
+    );
+    let q = query.to_lowercase();
+    let ru = app.settings.russian_item_names;
+    let in_vault: Vec<String> = vault::arr(&root, &vault::DWELLERS)
+        .iter()
+        .filter_map(|d| vault::text(d, &["uniqueData"]))
+        .collect();
+    let mut rows: Vec<(String, String, String)> = if *pets {
+        catalog()
+            .pets
+            .iter()
+            .filter(|p| p.rarity == "Legendary")
+            .map(|p| {
+                let bonus = catalog()
+                    .pet_bonuses
+                    .get(&p.bonus)
+                    .map_or(p.bonus.clone(), |n| n.get(ru).to_string());
+                let range = format!(
+                    "{}–{}",
+                    crate::widgets::fmt_num(p.bonus_min),
+                    crate::widgets::fmt_num(p.bonus_max)
+                );
+                (
+                    p.id.clone(),
+                    p.name.get(ru).to_string(),
+                    crate::sec_vault::bonus_text(&bonus, &range),
+                )
+            })
+            .collect()
+    } else {
+        catalog()
+            .unique_dwellers
+            .iter()
+            .filter(|u| u.in_journal())
+            .map(|u| {
+                let outfit = catalog()
+                    .outfit(&u.outfit)
+                    .map_or(u.outfit.clone(), |o| o.name.get(ru).to_string());
+                let mut extra = outfit;
+                if in_vault.contains(&u.id) {
+                    extra = format!("{extra}  ·  {}", app.t("dw.journalInVault"));
+                }
+                (
+                    u.id.clone(),
+                    format!("{} {}", u.first_name, u.last_name)
+                        .trim()
+                        .to_string(),
+                    extra,
+                )
+            })
+            .collect()
+    };
+    rows.retain(|r| {
+        q.is_empty() || r.1.to_lowercase().contains(&q) || r.2.to_lowercase().contains(&q)
+    });
+    rows.sort_by(|a, b| {
+        a.1.to_lowercase()
+            .cmp(&b.1.to_lowercase())
+            .then(a.2.cmp(&b.2))
+    });
+    egui::ScrollArea::vertical()
+        .max_height(300.0)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.set_min_width(420.0);
+            if rows.is_empty() {
+                ui.label(RichText::new(app.t("c.noResults")).color(c.muted));
+            }
+            for (id, name, extra) in &rows {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(
+                    name,
+                    0.0,
+                    egui::TextFormat::simple(egui::FontId::proportional(14.0), c.text),
+                );
+                job.append(
+                    &format!("  ·  {extra}"),
+                    0.0,
+                    egui::TextFormat::simple(egui::FontId::proportional(12.0), c.muted),
+                );
+                let resp =
+                    ui.add(egui::Button::selectable(pick.as_deref() == Some(id), job).wrap());
+                let resp = if *pets {
+                    crate::sec_vault::item_hover(
+                        app,
+                        resp,
+                        shelter_core::catalog::ItemKind::Pet,
+                        id,
+                    )
+                } else {
+                    resp
+                };
+                if resp.clicked() {
+                    *pick = Some(id.clone());
+                    if let Some(p) = catalog().pet(id) {
+                        *bonus = p.bonus_max.round();
+                    }
+                }
+            }
+        });
+    ui.add_space(6.0);
+    let mut ready = false;
+    if let Some(id) = pick.clone() {
+        if *pets {
+            if let Some(p) = catalog().pet(&id) {
+                let (lo, hi) = (p.bonus_min.floor(), p.bonus_max.ceil());
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(app.t("dw.journalBonus"));
+                    if let Some(v) = crate::widgets::pick_number(
+                        app,
+                        ui,
+                        "journal_bonus",
+                        bonus.clamp(lo, hi),
+                        (lo, hi),
+                        Some((lo, hi)),
+                        true,
+                    ) {
+                        *bonus = v;
+                    }
+                    crate::widgets::unit_label(
+                        ui,
+                        &app.tf(
+                            "dw.journalBonusRange",
+                            &[
+                                ("min", crate::widgets::fmt_num(lo)),
+                                ("max", crate::widgets::fmt_num(hi)),
+                            ],
+                        ),
+                    );
+                });
+                ready = true;
+            }
+        } else if let Some(u) = catalog().unique_dweller(&id) {
+            let stats: Vec<String> = shelter_core::vault::SPECIAL_LETTERS
+                .iter()
+                .zip(&u.special)
+                .map(|(l, v)| format!("{l} {v}"))
+                .collect();
+            ui.label(RichText::new(stats.join("  ")).font(style::mono(13.0)));
+            let weapon = catalog()
+                .weapon(&u.weapon)
+                .map_or_else(|| app.t("dw.noWeapon"), |w| w.name.get(ru).to_string());
+            ui.label(
+                RichText::new(app.tf("dw.journalWeapon", &[("name", weapon)]))
+                    .small()
+                    .color(c.muted),
+            );
+            ready = true;
+        }
+    }
+    let mut out = Outcome::Keep;
+    ui.horizontal(|ui| {
+        let add = ui
+            .add_enabled(ready, egui::Button::new(app.t("c.add")))
+            .clicked();
+        if add {
+            if let Some(id) = pick.clone() {
+                let action = if *pets {
+                    Action::AddPet {
+                        id,
+                        bonus_value: *bonus,
+                    }
+                } else {
+                    Action::AddUniqueDweller { id }
+                };
+                if app.act(action) {
+                    if !*pets {
+                        if let Some(o) = &app.open {
+                            app.dw.focus = vault::arr(o.doc.root(), &vault::DWELLERS)
+                                .last()
+                                .and_then(|d| vault::int(d, &["serializeId"]));
+                        }
+                    }
+                    out = Outcome::Close;
+                }
+            }
         }
         if ui.button(app.t("c.cancel")).clicked() {
             out = Outcome::Close;

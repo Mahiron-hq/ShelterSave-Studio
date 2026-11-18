@@ -59,8 +59,10 @@ const PLACES: &[(&str, &str)] = &[
     ("vault.map", "vm"),
     ("vault.rocks", "vm"),
     ("vault.themes", "vt"),
-    ("vault.unlocks", "vt"),
-    ("vault.emergency", "vt"),
+    ("vault.unlocks", "vb"),
+    ("vault.recipesTitle", "vb"),
+    ("vault.journal", "vb"),
+    ("o.incidents", "oe"),
     ("nav.dwellers", "d"),
     ("dw.pets", "d"),
     ("dw.waiting", "d"),
@@ -89,6 +91,7 @@ fn place(code: &str) -> Target {
         "vs" => Target::Vault(VaultTab::Storage),
         "vm" => Target::Vault(VaultTab::Rooms),
         "vt" => Target::Vault(VaultTab::Themes),
+        "vb" => Target::Vault(VaultTab::Book),
         "d" => Target::Section(Section::Dwellers),
         "oq" => Target::Other(OtherTab::Quests),
         "ow" => Target::Other(OtherTab::Wasteland),
@@ -176,7 +179,7 @@ pub fn toolbar_search(app: &mut App, ui: &mut egui::Ui) {
     let resp = ui.add(
         egui::TextEdit::singleline(&mut app.global_search)
             .hint_text(hint)
-            .desired_width(280.0),
+            .desired_width(ui.available_width().clamp(120.0, 320.0)),
     );
     if ui.input_mut(|i| {
         i.consume_shortcut(&egui::KeyboardShortcut::new(

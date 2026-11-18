@@ -8,7 +8,8 @@ import json
 import re
 from pathlib import Path
 
-ENUMS = ["EPetBreed", "EBonusEffect", "ERoomType", "ERoomClass"]
+ENUMS = ["EPetBreed", "EBonusEffect", "ERoomType", "ERoomClass", "ERoomEmergencyMode", "EEnemyType", "ESpecialStat", "EReward",
+         "ESpecialTheme"]
 
 
 def parse_enum(text, name):

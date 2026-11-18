@@ -45,6 +45,7 @@ pub enum VaultTab {
     Storage,
     Rooms,
     Themes,
+    Book,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -65,6 +66,23 @@ pub struct OpenDoc {
     pub path: Option<PathBuf>,
     pub stamp: Option<Stamp>,
     pub backed_up: bool,
+    /// The file on disk changed (the game saved) while there were unsaved edits.
+    pub newer_on_disk: bool,
+    pub checked: Instant,
+}
+
+impl OpenDoc {
+    pub fn new(doc: Document, path: Option<PathBuf>) -> OpenDoc {
+        let stamp = path.as_deref().and_then(files::stamp);
+        OpenDoc {
+            doc,
+            path,
+            stamp,
+            backed_up: false,
+            newer_on_disk: false,
+            checked: Instant::now(),
+        }
+    }
 }
 
 pub enum Modal {
@@ -82,7 +100,22 @@ pub enum Modal {
         last: String,
         gender: i64,
     },
+    /// Legendary dweller or pet from the game journal.
+    FromJournal {
+        pets: bool,
+        query: String,
+        pick: Option<String>,
+        bonus: f64,
+    },
     Restore,
+    /// Unsaved edits found after the editor closed unexpectedly.
+    Recover(std::rc::Rc<files::Recovery>),
+    /// Dwellers to bring over from another save: file name, (label, JSON), picked.
+    Import {
+        file: String,
+        dwellers: Vec<(String, String)>,
+        picked: BTreeSet<usize>,
+    },
 }
 
 #[derive(Clone)]
@@ -111,6 +144,8 @@ pub struct DwellerUi {
     pub mass_value: String,
     pub equip_kind: usize,
     pub equip_query: String,
+    /// Dweller the card was last shown for.
+    pub shown: Option<i64>,
 }
 
 #[derive(Default)]
@@ -137,23 +172,68 @@ pub struct App {
     pub dw: DwellerUi,
     pub st: StorageUi,
     pub room_sel: Option<i64>,
+    pub rock_sel: Option<(i64, i64)>,
     pub map_add: Option<crate::sec_vault::MapAdd>,
+    /// Type, size and level of the last thing built, offered again on the next empty cell.
+    pub last_add: Option<crate::sec_vault::MapAdd>,
     pub map_drag: Option<crate::sec_vault::MapDrag>,
     pub tree_search: String,
     pub tree_edit: HashMap<String, String>,
     pub bufs: HashMap<String, String>,
+    pub art: crate::art::Store,
     pub drags: HashMap<String, f64>,
     pub global_search: String,
     pub allow_close: bool,
-    pub last_focus_check: bool,
     pub resource_all: f64,
     pub load_error: Option<String>,
     pub tree_add_key: String,
     pub tree_add_value: String,
     pub restore_list: Vec<files::Backup>,
+    pub game_running: bool,
+    pub wheel: crate::widgets::WheelState,
+    report_cache: Option<(u64, std::rc::Rc<shelter_core::document::SaveReport>)>,
+    /// Revision last written to the recovery file (0 = none on disk).
+    recovery_rev: u64,
+    recovery_at: Instant,
+    issues_cache: Option<(u64, std::rc::Rc<Issues>)>,
+    game_watch: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// New and inherited integrity issues.
+pub type Issues = (
+    Vec<shelter_core::integrity::Issue>,
+    Vec<shelter_core::integrity::Issue>,
+);
+
 impl App {
+    /// Save report for the open file, computed once per change.
+    pub fn save_report(&mut self) -> Option<std::rc::Rc<shelter_core::document::SaveReport>> {
+        let open = self.open.as_ref()?;
+        let rev = open.doc.revision();
+        match &self.report_cache {
+            Some((r, rep)) if *r == rev => Some(rep.clone()),
+            _ => {
+                let rep = std::rc::Rc::new(open.doc.save_report());
+                self.report_cache = Some((rev, rep.clone()));
+                Some(rep)
+            }
+        }
+    }
+
+    /// Integrity issues of the open file, computed once per change.
+    pub fn issues(&mut self) -> Option<std::rc::Rc<Issues>> {
+        let open = self.open.as_ref()?;
+        let rev = open.doc.revision();
+        match &self.issues_cache {
+            Some((r, i)) if *r == rev => Some(i.clone()),
+            _ => {
+                let i = std::rc::Rc::new(open.doc.issues());
+                self.issues_cache = Some((rev, i.clone()));
+                Some(i)
+            }
+        }
+    }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> App {
         let settings = Settings::load();
         let lang = settings.lang();
@@ -174,23 +254,35 @@ impl App {
                 ..StorageUi::default()
             },
             room_sel: None,
+            rock_sel: None,
             map_add: None,
+            last_add: None,
             map_drag: None,
             tree_search: String::new(),
             tree_edit: HashMap::new(),
             bufs: HashMap::new(),
+            art: crate::art::Store::default(),
             drags: HashMap::new(),
             global_search: String::new(),
             allow_close: false,
-            last_focus_check: true,
             resource_all: 999_999.0,
             load_error: None,
             tree_add_key: String::new(),
             tree_add_value: String::new(),
             restore_list: Vec::new(),
+            game_running: false,
+            wheel: crate::widgets::WheelState::default(),
+            report_cache: None,
+            recovery_rev: 0,
+            recovery_at: Instant::now(),
+            issues_cache: None,
+            game_watch: crate::game::watch(cc.egui_ctx.clone()),
             settings,
         };
         app.apply_appearance(&cc.egui_ctx);
+        if let Some(rec) = files::read_recovery() {
+            app.modals.push(Modal::Recover(std::rc::Rc::new(rec)));
+        }
         if !app.settings.accepted_terms {
             app.modals.push(Modal::FirstRun);
         }
@@ -254,9 +346,57 @@ impl App {
         let params: Vec<(&str, String)> = label
             .params
             .iter()
-            .map(|(k, v)| (k.as_str(), v.clone()))
+            .map(|(k, v)| (k.as_str(), self.param_text(k, v)))
             .collect();
         self.tf(&label.key, &params)
+    }
+
+    /// Readable form of an id or path stored in a journal entry.
+    fn param_text(&self, key: &str, v: &str) -> String {
+        use shelter_core::catalog::catalog;
+        let ru = self.lang == shelter_core::i18n::Lang::Ru;
+        let cat = catalog();
+        match key {
+            "room" => cat
+                .room(v)
+                .and_then(|r| r.name.first())
+                .map_or_else(|| v.to_string(), |n| n.get(ru).to_string()),
+            "id" | "item" => ItemKind::ALL
+                .iter()
+                .find_map(|k| cat.item(*k, v))
+                .map(|i| i.name.get(ru).to_string())
+                .or_else(|| {
+                    cat.quests
+                        .iter()
+                        .find(|q| q.id == v)
+                        .map(|q| q.name.get(ru).to_string())
+                })
+                .or_else(|| {
+                    cat.objective(v)
+                        .map(|o| o.text(ru, 0, &["…".into(), "…".into()]))
+                })
+                .or_else(|| {
+                    cat.achievements
+                        .iter()
+                        .find(|a| !v.is_empty() && (a.objective_id == v || a.id == v))
+                        .map(|a| a.name.get(ru).to_string())
+                })
+                .unwrap_or_else(|| v.to_string()),
+            "key" => {
+                let k = format!("res.{v}");
+                match self.t(&k) {
+                    t if t == k => v.to_string(),
+                    t => t,
+                }
+            }
+            "path" | "field" => match (parse_path(v), &self.open) {
+                (Some(path), Some(open)) if !path.is_empty() => {
+                    crate::sec_save::path_title(self, open.doc.root(), &path)
+                }
+                _ => v.to_string(),
+            },
+            _ => v.to_string(),
+        }
     }
 
     pub fn error_text(&self, e: &ActionError) -> String {
@@ -275,6 +415,11 @@ impl App {
             ActionError::Rule(RuleError::RoomBusy) => self.t("aerr.roomBusy"),
             ActionError::Rule(RuleError::RoomFixed) => self.t("aerr.roomFixed"),
             ActionError::Rule(RuleError::RoomUnique) => self.t("aerr.roomUnique"),
+            ActionError::Rule(RuleError::RoomLocked) => self.t("aerr.roomLocked"),
+            ActionError::Rule(RuleError::RoomSize) => self.t("aerr.roomSize"),
+            ActionError::Rule(RuleError::OutfitGender) => self.t("aerr.outfitGender"),
+            ActionError::Rule(RuleError::IncidentActive) => self.t("aerr.incidentActive"),
+            ActionError::Rule(RuleError::InventoryFull) => self.t("aerr.inventoryFull"),
             ActionError::Rule(RuleError::NotFound) => self.t("aerr.notFound"),
             ActionError::BadJson(d) => self.tf("aerr.badJson", &[("detail", d.clone())]),
             ActionError::Nothing => self.t("aerr.nothing"),
@@ -381,12 +526,7 @@ impl App {
             .unwrap_or_default();
         match Document::open(&bytes, &name) {
             Ok(doc) => {
-                self.open = Some(OpenDoc {
-                    doc,
-                    path: Some(path.to_path_buf()),
-                    stamp: files::stamp(path),
-                    backed_up: false,
-                });
+                self.open = Some(OpenDoc::new(doc, Some(path.to_path_buf())));
                 self.reset_view();
                 self.settings.push_recent(path);
                 self.save_settings();
@@ -409,12 +549,7 @@ impl App {
         self.load_error = None;
         match Document::open(bytes, name) {
             Ok(doc) => {
-                self.open = Some(OpenDoc {
-                    doc,
-                    path: None,
-                    stamp: None,
-                    backed_up: false,
-                });
+                self.open = Some(OpenDoc::new(doc, None));
                 self.reset_view();
             }
             Err(e) => {
@@ -435,7 +570,9 @@ impl App {
             ..StorageUi::default()
         };
         self.room_sel = None;
+        self.rock_sel = None;
         self.map_add = None;
+        self.last_add = None;
         self.map_drag = None;
         self.bufs.clear();
         self.drags.clear();
@@ -448,6 +585,148 @@ impl App {
         } else {
             self.open = None;
             self.found = files::discover(&self.settings.save_dirs);
+        }
+    }
+
+    /// Keeps a copy of unsaved edits on disk a few seconds after each change;
+    /// removes it once nothing is left unsaved.
+    fn keep_recovery(&mut self) {
+        let dirty = self.dirty();
+        let Some(open) = self.open.as_ref().filter(|_| dirty) else {
+            if self.recovery_rev != 0 && !self.modals.iter().any(|m| matches!(m, Modal::Recover(_)))
+            {
+                files::clear_recovery();
+                self.recovery_rev = 0;
+            }
+            return;
+        };
+        let rev = open.doc.revision();
+        if rev == self.recovery_rev || self.recovery_at.elapsed() < Duration::from_secs(3) {
+            return;
+        }
+        self.recovery_at = Instant::now();
+        self.recovery_rev = rev;
+        let rec = files::Recovery {
+            path: open.path.clone(),
+            session: open.doc.session(),
+        };
+        if let Ok(text) = serde_json::to_string(&rec) {
+            std::thread::spawn(move || {
+                let _ = files::write_recovery(&text);
+            });
+        }
+    }
+
+    /// Opens the edits kept from a session that ended unexpectedly.
+    pub fn recover(&mut self, rec: &files::Recovery) {
+        let session: shelter_core::document::Session =
+            match serde_json::to_value(&rec.session).and_then(serde_json::from_value) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+        match Document::restore(session) {
+            Ok(doc) => {
+                // The game may have saved the file since then.
+                let newer = rec.path.as_deref().is_some_and(|p| {
+                    std::fs::read(p)
+                        .ok()
+                        .and_then(|b| Document::open(&b, "").ok())
+                        .is_some_and(|d| d.root() != doc.original())
+                });
+                let mut open = OpenDoc::new(doc, rec.path.clone());
+                open.newer_on_disk = newer;
+                self.open = Some(open);
+                self.reset_view();
+                self.toast(self.t("recover.done"), false);
+            }
+            Err(e) => {
+                let t = self.tf(&format!("err.{}", e.code()), &[("detail", String::new())]);
+                self.toast_error(t);
+            }
+        }
+    }
+
+    /// Notices a newer file written by the game and offers to load it.
+    fn watch_file(&mut self, ctx: &egui::Context) {
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        if open.path.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_secs(1));
+        if open.checked.elapsed() < Duration::from_secs(1) || open.newer_on_disk {
+            return;
+        }
+        open.checked = Instant::now();
+        if self.changed_on_disk() {
+            if let Some(open) = self.open.as_mut() {
+                open.newer_on_disk = true;
+            }
+        }
+    }
+
+    /// Reads the file again, keeping the current page; `keep_edits` repeats
+    /// the unsaved edits on the new file.
+    pub fn reload(&mut self, keep_edits: bool) {
+        let mode = self.mode();
+        let lang = self.lang;
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        let Some(path) = open.path.clone() else {
+            return;
+        };
+        let loaded = std::fs::read(&path)
+            .map_err(|e| i18n::trf(lang, "err.io", &[("detail", e.to_string())]))
+            .and_then(|bytes| {
+                let res = if keep_edits {
+                    open.doc.rebase(&bytes, mode)
+                } else {
+                    Document::open(&bytes, &open.doc.file_name).map(|d| (d, 0))
+                };
+                res.map_err(|e| {
+                    i18n::trf(
+                        lang,
+                        &format!("err.{}", e.code()),
+                        &[("detail", String::new())],
+                    )
+                })
+            });
+        match loaded {
+            Ok((doc, failed)) => {
+                open.doc = doc;
+                open.stamp = files::stamp(&path);
+                open.backed_up = false;
+                open.newer_on_disk = false;
+                open.checked = Instant::now();
+                self.bufs.clear();
+                self.drags.clear();
+                self.tree_edit.clear();
+                self.map_drag = None;
+                let mut text = self.t("reload.done");
+                if failed > 0 {
+                    text.push(' ');
+                    text.push_str(&self.tf("reload.failed", &[("n", failed.to_string())]));
+                }
+                self.toast(text, false);
+            }
+            Err(e) => {
+                // A file caught half-written is read again on the next check.
+                open.checked = Instant::now();
+                self.toast_error(e);
+            }
+        }
+    }
+
+    /// Toolbar button: reload now, asking first when there are edits.
+    pub fn request_reload(&mut self) {
+        if self.dirty() {
+            if let Some(open) = self.open.as_mut() {
+                open.newer_on_disk = true;
+            }
+        } else {
+            self.reload(false);
         }
     }
 
@@ -635,54 +914,12 @@ impl App {
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         let c = style::colors(ui.ctx());
+        let has = self.open.is_some();
+        // Narrow windows show the status badges as icons with a tooltip.
+        let narrow = ui.max_rect().width() < 700.0;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            ui.label(RichText::new(self.t("app.name")).font(style::bold(16.0)));
-            ui.separator();
-            if icon_button(ui, icons::OPEN, &self.t("tb.open"), true).clicked() {
-                self.request_open(None);
-            }
-            let has = self.open.is_some();
-            let can_undo = self
-                .open
-                .as_ref()
-                .is_some_and(|o| o.doc.history().can_undo());
-            let can_redo = self
-                .open
-                .as_ref()
-                .is_some_and(|o| o.doc.history().can_redo());
-            if icon_button(ui, icons::SAVE, &self.t("tb.save"), has).clicked() {
-                self.modals.push(Modal::Review);
-            }
-            if icon_button(ui, icons::DOWNLOAD, &self.t("tb.saveAs"), has).clicked() {
-                self.save_as();
-            }
-            ui.separator();
-            if icon_button(
-                ui,
-                icons::UNDO,
-                &format!("{} (Ctrl+Z)", self.t("tb.undo")),
-                can_undo,
-            )
-            .clicked()
-            {
-                self.undo();
-            }
-            if icon_button(
-                ui,
-                icons::REDO,
-                &format!("{} (Ctrl+Y)", self.t("tb.redo")),
-                can_redo,
-            )
-            .clicked()
-            {
-                self.redo();
-            }
-            if icon_button(ui, icons::HISTORY, &self.t("tb.journal"), has).clicked() {
-                self.modals.push(Modal::Journal);
-            }
-            ui.separator();
-            crate::search::toolbar_search(self, ui);
+            // Right side first so the search box gets only the space left.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if icon_button(ui, icons::INFO, &self.t("tb.about"), true).clicked() {
                     self.modals.push(Modal::About);
@@ -695,15 +932,93 @@ impl App {
                 } else {
                     (self.t("tb.mode.normal"), c.surface_alt, c.muted)
                 };
-                badge(ui, &mode_text, fill, fg);
+                let mode_help = format!(
+                    "{mode_text}
+
+{}",
+                    self.t("tb.modeHelp")
+                );
+                let mode_text = match (narrow, self.expert()) {
+                    (false, _) => mode_text,
+                    (true, true) => icons::WARN.to_string(),
+                    (true, false) => icons::SHIELD.to_string(),
+                };
+                badge(ui, &mode_text, fill, fg).on_hover_text(mode_help);
                 if has {
                     let (t, fill, fg) = if self.dirty() {
                         (format!("● {}", self.t("tb.unsaved")), c.mark_soft, c.text)
                     } else {
                         (self.t("tb.saved"), c.surface_alt, c.muted)
                     };
-                    badge(ui, &t, fill, fg);
+                    if narrow {
+                        let icon = if self.dirty() { "●" } else { icons::CHECK };
+                        badge(ui, icon, fill, fg).on_hover_text(t);
+                    } else {
+                        badge(ui, &t, fill, fg);
+                    }
                 }
+                if self.game_running {
+                    badge(
+                        ui,
+                        &format!("{}  {}", icons::WARN, self.t("tb.gameRunning")),
+                        c.danger_soft,
+                        c.danger,
+                    )
+                    .on_hover_text(self.t("tb.gameRunningHelp"));
+                }
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    if ui.available_width() > 760.0 {
+                        ui.label(RichText::new(self.t("app.name")).font(style::bold(16.0)));
+                        ui.separator();
+                    }
+                    if icon_button(ui, icons::OPEN, &self.t("tb.open"), true).clicked() {
+                        self.request_open(None);
+                    }
+                    let can_undo = self
+                        .open
+                        .as_ref()
+                        .is_some_and(|o| o.doc.history().can_undo());
+                    let can_redo = self
+                        .open
+                        .as_ref()
+                        .is_some_and(|o| o.doc.history().can_redo());
+                    if icon_button(ui, icons::SAVE, &self.t("tb.save"), has).clicked() {
+                        self.modals.push(Modal::Review);
+                    }
+                    if icon_button(ui, icons::DOWNLOAD, &self.t("tb.saveAs"), has).clicked() {
+                        self.save_as();
+                    }
+                    let can_reload = self.open.as_ref().is_some_and(|o| o.path.is_some());
+                    if icon_button(ui, icons::REFRESH, &self.t("tb.reload"), can_reload).clicked() {
+                        self.request_reload();
+                    }
+                    ui.separator();
+                    if icon_button(
+                        ui,
+                        icons::UNDO,
+                        &format!("{} (Ctrl+Z)", self.t("tb.undo")),
+                        can_undo,
+                    )
+                    .clicked()
+                    {
+                        self.undo();
+                    }
+                    if icon_button(
+                        ui,
+                        icons::REDO,
+                        &format!("{} (Ctrl+Y)", self.t("tb.redo")),
+                        can_redo,
+                    )
+                    .clicked()
+                    {
+                        self.redo();
+                    }
+                    if icon_button(ui, icons::HISTORY, &self.t("tb.journal"), has).clicked() {
+                        self.modals.push(Modal::Journal);
+                    }
+                    ui.separator();
+                    crate::search::toolbar_search(self, ui);
+                });
             });
         });
     }
@@ -784,14 +1099,16 @@ impl App {
                         .inner_margin(12)
                         .show(ui, |ui| {
                             ui.set_max_width(420.0);
-                            ui.horizontal_wrapped(|ui| {
+                            ui.horizontal_top(|ui| {
                                 let icon = if t.error { icons::ALERT } else { icons::CHECK };
                                 ui.label(RichText::new(icon).color(if t.error {
                                     c.danger
                                 } else {
                                     c.success
                                 }));
-                                ui.label(&t.text);
+                                ui.add(egui::Label::new(&t.text).wrap());
+                            });
+                            ui.horizontal(|ui| {
                                 if t.undo && ui.button(i18n::tr(self.lang, "c.undo")).clicked() {
                                     undo = true;
                                     dismiss = Some(i);
@@ -962,16 +1279,15 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let reduce = false;
-        let _ = reduce;
+        self.wheel.begin_frame(&ctx);
         self.close_guard(&ctx);
         self.shortcuts(&ctx);
         self.handle_drop(&ctx);
-        if ctx.input(|i| i.focused) && !self.last_focus_check && self.changed_on_disk() {
-            let text = self.t("review.changedOnDisk");
-            self.toast_error(text);
-        }
-        self.last_focus_check = ctx.input(|i| i.focused);
+        self.watch_file(&ctx);
+        self.keep_recovery();
+        let custom = self.game_dir_setting();
+        self.art.ensure(&ctx, custom.as_deref());
+        self.game_running = self.game_watch.load(std::sync::atomic::Ordering::Relaxed);
         let c: Colors = style::colors(&ctx);
 
         egui::Panel::top("toolbar")
@@ -1006,6 +1322,7 @@ impl eframe::App for App {
                     self.start_screen(ui);
                     return;
                 }
+                self.newer_banner(ui);
                 match self.section {
                     Section::Save => crate::sec_save::show(self, ui),
                     Section::Vault => crate::sec_vault::show(self, ui),
@@ -1015,10 +1332,13 @@ impl eframe::App for App {
             });
         crate::dialogs::show(self, &ctx);
         self.toasts_ui(&ctx);
+        self.wheel.end_frame(&ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let _ = self.settings.save();
+        // A normal exit is the user's choice, so the kept edits are not needed.
+        files::clear_recovery();
     }
 }
 
@@ -1051,14 +1371,20 @@ pub fn accessible(resp: &egui::Response, name: &str) {
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, name.clone()));
 }
 
-pub fn badge(ui: &mut egui::Ui, text: &str, fill: egui::Color32, fg: egui::Color32) {
+pub fn badge(
+    ui: &mut egui::Ui,
+    text: &str,
+    fill: egui::Color32,
+    fg: egui::Color32,
+) -> egui::Response {
     egui::Frame::new()
         .fill(fill)
         .corner_radius(10)
         .inner_margin(egui::Margin::symmetric(10, 3))
         .show(ui, |ui| {
             ui.label(RichText::new(text).small().color(fg));
-        });
+        })
+        .response
 }
 
 pub fn callout(
@@ -1144,4 +1470,91 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
             add(ui)
         })
         .inner
+}
+
+/// Reverse of `path_to_string`: `a.b[2].c`.
+fn parse_path(s: &str) -> Option<Vec<shelter_core::json::Seg>> {
+    use shelter_core::json::Seg;
+    let mut out = Vec::new();
+    for part in s.split('.') {
+        let (key, mut rest) = match part.find('[') {
+            Some(i) => (&part[..i], &part[i..]),
+            None => (part, ""),
+        };
+        if !key.is_empty() {
+            out.push(Seg::Key(key.into()));
+        }
+        while let Some(r) = rest.strip_prefix('[') {
+            let end = r.find(']')?;
+            out.push(Seg::Index(r[..end].parse().ok()?));
+            rest = &r[end + 1..];
+        }
+        if !rest.is_empty() {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+impl App {
+    fn newer_banner(&mut self, ui: &mut egui::Ui) {
+        if !self.open.as_ref().is_some_and(|o| o.newer_on_disk) {
+            return;
+        }
+        let c = style::colors(ui.ctx());
+        let dirty = self.dirty();
+        egui::Frame::new()
+            .fill(c.warning_soft)
+            .stroke(egui::Stroke::new(1.0, c.warning))
+            .corner_radius(8)
+            .inner_margin(12)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(icons::REFRESH).color(c.warning).size(16.0));
+                    ui.label(RichText::new(self.t("reload.title")).font(style::bold(14.0)));
+                });
+                let text = if dirty {
+                    "reload.text"
+                } else {
+                    "reload.textClean"
+                };
+                ui.add(egui::Label::new(self.t(text)).wrap());
+                ui.horizontal_wrapped(|ui| {
+                    if dirty {
+                        if ui
+                            .button(format!("{}  {}", icons::REFRESH, self.t("reload.keep")))
+                            .on_hover_text(self.t("reload.keepHelp"))
+                            .clicked()
+                        {
+                            self.reload(true);
+                        }
+                        if ui.button(self.t("reload.discard")).clicked() {
+                            self.reload(false);
+                        }
+                    } else if ui
+                        .button(format!("{}  {}", icons::REFRESH, self.t("reload.load")))
+                        .clicked()
+                    {
+                        self.reload(false);
+                    }
+                    if ui.button(self.t("reload.later")).clicked() {
+                        if let Some(open) = self.open.as_mut() {
+                            open.newer_on_disk = false;
+                            open.stamp = open.path.as_deref().and_then(files::stamp);
+                            open.backed_up = false;
+                        }
+                    }
+                });
+            });
+        ui.add_space(8.0);
+    }
+
+    /// Game folder chosen in the settings, if any.
+    pub fn game_dir_setting(&self) -> Option<String> {
+        self.settings
+            .game_dir
+            .as_ref()
+            .map(|p| p.display().to_string())
+    }
 }

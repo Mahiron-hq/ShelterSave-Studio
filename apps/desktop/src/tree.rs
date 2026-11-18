@@ -46,7 +46,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         );
     });
     let Some(open) = &app.open else { return };
-    let root = open.doc.root().clone();
+    let root = open.doc.shared_root();
     let q = app.tree_search.trim().to_lowercase();
     egui::ScrollArea::both().auto_shrink(false).show(ui, |ui| {
         if q.is_empty() {

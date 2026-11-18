@@ -105,6 +105,64 @@ fn room_removal_keeps_real_saves_valid() {
 }
 
 #[test]
+fn dwellers_move_between_real_saves() {
+    use shelter_core::actions::{run, Action, Ctx};
+    use shelter_core::integrity::{check, Severity};
+    use shelter_core::rules::Mode;
+    use shelter_core::vault::{arr, DWELLERS};
+    let Ok(dir) = std::env::var("SHELTER_SAMPLES") else {
+        return;
+    };
+    let roots: Vec<_> = std::fs::read_dir(dir)
+        .expect("samples dir")
+        .filter_map(|e| {
+            let path = e.ok()?.path();
+            (path.extension()?.to_str()? == "sav").then_some(path)
+        })
+        .map(|p| sav::read_sav(&std::fs::read(&p).expect("read")).expect("parse"))
+        .collect();
+    for (a, from) in roots.iter().enumerate() {
+        let target = &roots[(a + 1) % roots.len()];
+        let mut copy = target.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: target,
+        };
+        let before = arr(&copy, &DWELLERS).len();
+        let mut moved = 0;
+        for d in arr(from, &DWELLERS).iter().take(10) {
+            match run(
+                &mut copy,
+                &ctx,
+                &Action::ImportDweller {
+                    json: d.to_compact(),
+                },
+            ) {
+                Ok(_) => moved += 1,
+                Err(e) => assert!(
+                    matches!(
+                        e,
+                        shelter_core::actions::ActionError::Rule(
+                            shelter_core::rules::RuleError::TooManyDwellers
+                        )
+                    ),
+                    "{e:?}"
+                ),
+            }
+        }
+        // A full vault takes nobody.
+        assert!(moved > 0 || before >= 200);
+        assert_eq!(arr(&copy, &DWELLERS).len(), before + moved);
+        let errors: Vec<_> = check(&copy)
+            .into_iter()
+            .filter(|i| i.severity == Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(sav::read_sav(sav::write_sav(&copy).as_bytes()).is_ok());
+    }
+}
+
+#[test]
 fn every_field_of_real_saves_is_described() {
     use shelter_core::fields::describe;
     use shelter_core::i18n::Lang;

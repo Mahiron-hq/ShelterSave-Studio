@@ -28,6 +28,7 @@ use crate::widgets::{self, Opts};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
+        .id_salt("save_main")
         .auto_shrink(false)
         .show(ui, |ui| {
             section_title(ui, icons::SHIELD, &app.t("nav.save"), "");
@@ -41,18 +42,29 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ("Survival".to_string(), app.t("vm.Survival")),
                 ];
                 widgets::choice_field(app, ui, &p(&["vault", "VaultMode"]), o, &choices);
-                for key in ["appVersion", "deviceName", "seasonId"] {
-                    if app
+                let expert = app.expert();
+                for key in ["deviceName", "appVersion", "seasonId", "versionCount"] {
+                    let Some(v) = app
                         .open
                         .as_ref()
-                        .is_some_and(|o| o.doc.root().get(key).is_some())
-                    {
-                        let o = Opts::at(app, &p(&[key]));
-                        widgets::text_field(app, ui, &p(&[key]), o);
+                        .and_then(|o| o.doc.root().get(key).cloned())
+                    else {
+                        continue;
+                    };
+                    let o = Opts::at(app, &p(&[key]));
+                    match (expert || key == "deviceName", &v) {
+                        (true, shelter_core::json::Value::Number(_)) => {
+                            widgets::num_field(app, ui, &p(&[key]), o);
+                        }
+                        (true, _) => widgets::text_field(app, ui, &p(&[key]), o),
+                        (false, _) => {
+                            let shown = widgets::short(&v).trim().to_string();
+                            widgets::row(app, ui, &p(&[key]), &o, |_, ui| {
+                                ui.label(shown);
+                            });
+                        }
                     }
                 }
-                let o = Opts::at(app, &p(&["versionCount"]));
-                widgets::num_field(app, ui, &p(&["versionCount"]), o);
             });
             ui.add_space(10.0);
             panel(ui, |ui| {
@@ -125,7 +137,12 @@ fn summary(app: &mut App, ui: &mut egui::Ui) {
     let alive = dwellers.iter().filter(|d| !vault::is_dead(d)).count();
     let items = vault::arr(root, &vault::ITEMS).len();
     let rooms = vault::arr(root, &vault::ROOMS).len();
-    let pets = vault::arr(root, &vault::ACTORS).len();
+    let actors = vault::arr(root, &vault::ACTORS);
+    let pets = actors
+        .iter()
+        .filter(|a| vault::int(a, &["characterType"]) == Some(3))
+        .count();
+    let robots = actors.len() - pets;
     let size = root.to_compact().len();
     let version = vault::text(root, &["appVersion"]).unwrap_or_default();
     let keys = root.as_object().map_or(0, |o| o.len());
@@ -163,11 +180,15 @@ fn summary(app: &mut App, ui: &mut egui::Ui) {
         (app.t("sum.rooms"), rooms.to_string()),
         (app.t("sum.items"), items.to_string()),
         (app.t("sum.pets"), pets.to_string()),
+        (app.t("sum.robots"), robots.to_string()),
         (app.t("sum.version"), version.trim().to_string()),
         (app.t("sum.format"), fmt.to_string()),
         (app.t("sum.size"), format!("{} KB", size / 1024)),
-        (app.t("sum.rootKeys"), keys.to_string()),
     ];
+    let mut rows = rows.to_vec();
+    if app.expert() {
+        rows.push((app.t("sum.rootKeys"), keys.to_string()));
+    }
     panel(ui, |ui| {
         ui.label(RichText::new(app.t("save.summary")).font(style::bold(16.0)));
         egui::Grid::new("summary")
@@ -182,6 +203,49 @@ fn summary(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
     });
+}
+
+/// Readable place of a value: the dweller or room it belongs to, then the
+/// field names, for change lists.
+pub fn path_title(app: &App, root: &shelter_core::json::Value, path: &[Seg]) -> String {
+    let key = |i: usize| match path.get(i) {
+        Some(Seg::Key(k)) => k.as_str(),
+        _ => "",
+    };
+    let mut parts: Vec<String> = Vec::new();
+    let mut start = 0;
+    match (key(0), key(1), path.get(2)) {
+        ("dwellers", "dwellers", Some(Seg::Index(i))) => {
+            if let Some(d) = vault::arr(root, &vault::DWELLERS).get(*i) {
+                parts.push(vault::dweller_name(d));
+            }
+            start = 3;
+        }
+        ("vault", "rooms", Some(Seg::Index(i))) => {
+            if let Some(r) = vault::arr(root, &vault::ROOMS).get(*i) {
+                parts.push(crate::sec_vault::room_title(app, r));
+            }
+            start = 3;
+        }
+        _ => {}
+    }
+    let mut prefix: Vec<Seg> = path[..start.min(path.len())].to_vec();
+    let mut fields = Vec::new();
+    for seg in &path[start.min(path.len())..] {
+        prefix.push(seg.clone());
+        if let Seg::Key(_) = seg {
+            fields.push(shelter_core::fields::describe(app.lang, &prefix).label);
+        }
+    }
+    if fields.len() > 3 {
+        fields.drain(..fields.len() - 3);
+    }
+    parts.extend(fields);
+    if parts.is_empty() {
+        path_to_string(path)
+    } else {
+        parts.join(" › ")
+    }
 }
 
 pub fn issue_text(app: &App, i: &Issue) -> String {
@@ -225,21 +289,27 @@ pub fn go_to(app: &mut App, path: &[Seg]) {
             }
         }
         ("vault", _) => app.section = Section::Vault,
-        _ => {
+        (root, _) => {
             app.section = Section::Other;
             if app.expert() {
                 app.other_tab = OtherTab::Tree;
                 app.tree_search = path_to_string(path);
             } else {
-                app.other_tab = OtherTab::Service;
+                app.other_tab = match root {
+                    "objectiveMgr" => OtherTab::Objectives,
+                    "StatsWindow" => OtherTab::Stats,
+                    "tutorialManager" => OtherTab::Tutorial,
+                    "MysteriousStranger" | "DeathclawManager" => OtherTab::Events,
+                    _ => OtherTab::Quests,
+                };
             }
         }
     }
 }
 
 fn integrity(app: &mut App, ui: &mut egui::Ui) {
-    let Some(open) = &app.open else { return };
-    let (new, old) = open.doc.issues();
+    let Some(issues) = app.issues() else { return };
+    let (new, old) = (&issues.0, &issues.1);
     let c = style::colors(ui.ctx());
     let mut goto = None;
     let mut fix = false;

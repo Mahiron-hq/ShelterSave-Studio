@@ -127,6 +127,22 @@ pub enum Action {
         field: String,
         rgb: u32,
     },
+    /// Dweller copied from another save (its JSON), with ties to that vault cut.
+    ImportDweller {
+        json: String,
+    },
+    /// Lets a quest be offered again: removes it from a history or skipped list
+    /// (`list` from `QUEST_MEMORY`); an empty `quest` clears the list.
+    ForgetQuest {
+        list: String,
+        quest: String,
+    },
+    /// Hair or face mask (beard, glasses...) by its game name; empty removes it.
+    SetLook {
+        id: i64,
+        field: String,
+        value: String,
+    },
     AddDweller {
         first: String,
         last: String,
@@ -182,6 +198,9 @@ pub enum Action {
         col: i64,
         merge: i64,
         level: i64,
+        /// Also unlocks the room in the blueprint book (the game crashes on built locked rooms).
+        #[serde(default)]
+        unlock: bool,
     },
     RemoveRoom {
         room: i64,
@@ -198,13 +217,118 @@ pub enum Action {
     RemoveRock {
         index: usize,
     },
+    AddRock {
+        row: i64,
+        col: i64,
+    },
     RemoveAllRocks,
     UnlockAllRooms,
     UnlockAllRecipes,
     CompleteCollection,
     FinishEmergency,
     CompleteTutorial,
+    SetHints {
+        shown: bool,
+    },
+    CompleteObjective {
+        slot: usize,
+    },
+    MarkQuest {
+        id: String,
+        done: bool,
+    },
+    ReplaceObjective {
+        slot: usize,
+        id: String,
+        level: i64,
+    },
+    /// Daily (`daily`), weekly (`weekly`) or standalone (`standalone`) quest offered now.
+    ReplaceQuest {
+        kind: String,
+        index: usize,
+        id: String,
+    },
+    SetAchievement {
+        id: String,
+        done: bool,
+    },
+    /// Mysterious Stranger: next visit after `seconds` (while he is away),
+    /// or time left in the vault (while he is there).
+    SetStrangerTime {
+        seconds: f64,
+    },
+    /// Moves a game timer so it fires after `seconds`.
+    SetTaskTime {
+        id: i64,
+        seconds: f64,
+    },
     FixIssues,
+    /// Blueprint book: room type unlocked or not.
+    SetRoomUnlocked {
+        room: String,
+        unlocked: bool,
+    },
+    /// Crafting recipe known or not.
+    SetRecipe {
+        id: String,
+        known: bool,
+    },
+    /// Clears the "new" marks in the journal and on room themes.
+    MarkCollectionRead,
+    /// Look of every room of a type; `None` restores the standard one.
+    SetRoomTheme {
+        room: String,
+        theme: Option<String>,
+    },
+    /// Theme parts found (0..=9) and whether the theme is crafted.
+    SetThemeState {
+        id: String,
+        parts: i64,
+        crafted: bool,
+    },
+    /// Ready-to-collect amount in a production room.
+    SetStored {
+        room: i64,
+        resource: String,
+        value: f64,
+    },
+    AddTeamItems {
+        team: usize,
+        kind: ItemKind,
+        id: String,
+        count: i64,
+        #[serde(default)]
+        recipe: bool,
+    },
+    RemoveTeamItems {
+        team: usize,
+        indices: Vec<usize>,
+    },
+    SetTeamThemeParts {
+        team: usize,
+        id: String,
+        parts: i64,
+    },
+    /// Room incident (fire, radroaches, molerats, radscorpions) with damage share `strength`.
+    StartIncident {
+        room: i64,
+        kind: i64,
+        strength: f64,
+    },
+    /// Room damage share for a room incident, raider health for a raid (`room` = None).
+    SetIncidentStrength {
+        room: Option<i64>,
+        value: f64,
+    },
+    /// Legendary dweller from the journal, as the game adds one.
+    AddUniqueDweller {
+        id: String,
+    },
+    /// Pet with its journal entry.
+    AddPet {
+        id: String,
+        bonus_value: f64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -258,6 +382,7 @@ pub fn run(root: &mut Value, ctx: &Ctx<'_>, action: &Action) -> R<Transaction> {
             label,
             ops: b.finish(),
             affected,
+            action: serde_json::to_value(action).ok(),
         }),
         Ok(_) => {
             b.abort();
@@ -534,9 +659,50 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             }
             let argb = 0xff00_0000u32 | (rgb & 0x00ff_ffff);
             let n = for_dwellers(b, ids, |b, base| {
-                Ok(b.set(join(base, &[field]), Value::int(argb as i64))?)
+                let mut value = argb;
+                // The game replaces any other outfit colour with the nearest allowed one.
+                if field == "outfitColor" && mode == Mode::Normal {
+                    let d = b.get(base).cloned().unwrap_or(Value::Null);
+                    let outfit = d
+                        .at(&p(&["equipedOutfit", "id"]))
+                        .and_then(Value::as_text)
+                        .unwrap_or_else(|| "jumpsuit".into());
+                    if let Some(o) =
+                        catalog().outfit_art(&outfit, int(&d, &["gender"]).unwrap_or(1))
+                    {
+                        value = o.game_color(argb);
+                    }
+                }
+                Ok(b.set(join(base, &[field]), Value::int(i64::from(value)))?)
             })?;
             Ok((Label::new("act.setColor"), n))
+        }
+        Action::ImportDweller { json } => {
+            let name = import_dweller(b, mode, json)?;
+            Ok((Label::new("act.importDweller").with("name", name), 1))
+        }
+        Action::ForgetQuest { list, quest } => {
+            let path = QUEST_MEMORY
+                .iter()
+                .find(|(k, _)| k == list)
+                .map(|(_, p)| p.to_vec())
+                .ok_or(RuleError::NotFound)?;
+            let path = p(&path);
+            let mut n = 0;
+            while let Some(i) = b.get(&path).and_then(Value::as_array).and_then(|a| {
+                a.iter().position(|e| {
+                    quest.is_empty()
+                        || e.get("questName").and_then(Value::as_text).as_deref() == Some(quest)
+                })
+            }) {
+                b.remove(path.clone(), i)?;
+                n += 1;
+            }
+            Ok((Label::new("act.forgetQuest").with("id", quest), n))
+        }
+        Action::SetLook { id, field, value } => {
+            set_look(b, mode, *id, field, value)?;
+            Ok((Label::new("act.setLook"), 1))
         }
         Action::AddDweller {
             first,
@@ -675,7 +841,14 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             col,
             merge,
             level,
+            unlock,
         } => {
+            if *unlock && room_lock(b.root(), kind).is_some() {
+                set_room_unlocked(b, mode, kind, true)?;
+            }
+            if mode == Mode::Normal && room_lock(b.root(), kind).is_some() {
+                return Err(RuleError::RoomLocked.into());
+            }
             add_room(b, mode, kind, *row, *col, *merge, *level)?;
             Ok((Label::new("act.addRoom").with("room", kind), 1))
         }
@@ -696,6 +869,12 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
         Action::RemoveRock { index } => {
             b.remove(p(&["vault", "rocks"]), *index)?;
             Ok((Label::new("act.removeRock"), 1))
+        }
+        Action::AddRock { row, col } => {
+            map::fits(b.root(), *row, *col, 2, None).map_err(place_error)?;
+            let rock = Value::obj(vec![("r", Value::int(*row)), ("c", Value::int(*col))]);
+            b.push(p(&["vault", "rocks"]), rock)?;
+            Ok((Label::new("act.addRock"), 1))
         }
         Action::RemoveAllRocks => {
             let n = arr(b.root(), &["vault", "rocks"]).len();
@@ -729,27 +908,137 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             Ok((Label::new("act.completeCollection"), n))
         }
         Action::FinishEmergency => {
-            let base = p(&["vault", "emergencyData"]);
-            let mut n = 0;
-            for (k, v) in [
-                ("active", Value::Bool(false)),
-                ("failedPreviousWave", Value::Bool(false)),
-                ("currentWave", Value::int(0)),
-                ("graceTimeLeft", Value::int(-1)),
-            ] {
-                if b.get(&join(&base, &[k])).is_some() {
-                    n += usize::from(b.set(join(&base, &[k]), v)?);
-                }
-            }
+            let n = finish_emergency(b)?;
             Ok((Label::new("act.finishEmergency"), n.min(1)))
         }
         Action::CompleteTutorial => {
             let n = complete_tutorial(b)?;
             Ok((Label::new("act.completeTutorial"), n))
         }
+        Action::SetHints { shown } => {
+            let n = set_hints(b, *shown)?;
+            Ok((Label::new("act.setHints"), n))
+        }
+        Action::CompleteObjective { slot } => {
+            complete_objective(b, *slot)?;
+            Ok((Label::new("act.completeObjective"), 1))
+        }
+        Action::MarkQuest { id, done } => {
+            mark_quest(b, mode, id, *done)?;
+            Ok((Label::new("act.markQuest").with("id", id.clone()), 1))
+        }
+        Action::ReplaceQuest { kind, index, id } => {
+            replace_quest(b, mode, kind, *index, id)?;
+            Ok((Label::new("act.replaceQuest").with("id", id.clone()), 1))
+        }
+        Action::ReplaceObjective { slot, id, level } => {
+            replace_objective(b, mode, *slot, id, *level)?;
+            Ok((Label::new("act.replaceObjective").with("id", id.clone()), 1))
+        }
+        Action::SetStrangerTime { seconds } => {
+            set_stranger_time(b, *seconds)?;
+            Ok((Label::new("act.setStrangerTime"), 1))
+        }
+        Action::SetTaskTime { id, seconds } => {
+            set_task_time(b, *id, *seconds)?;
+            Ok((Label::new("act.setTaskTime"), 1))
+        }
+        Action::SetAchievement { id, done } => {
+            set_achievement(b, mode, id, *done)?;
+            Ok((Label::new("act.setAchievement").with("id", id.clone()), 1))
+        }
         Action::FixIssues => {
             let n = integrity::fix_all(b)?;
             Ok((Label::new("act.fixIssues").with("count", n), n))
+        }
+        Action::SetRoomUnlocked { room, unlocked } => {
+            let n = set_room_unlocked(b, mode, room, *unlocked)?;
+            let key = if *unlocked {
+                "act.unlockRoom"
+            } else {
+                "act.lockRoom"
+            };
+            Ok((Label::new(key).with("room", room), n))
+        }
+        Action::SetRecipe { id, known } => {
+            let n = set_recipe(b, mode, id, *known)?;
+            let key = if *known {
+                "act.learnRecipe"
+            } else {
+                "act.forgetRecipe"
+            };
+            Ok((Label::new(key).with("id", id), n))
+        }
+        Action::MarkCollectionRead => {
+            let n = mark_collection_read(b)?;
+            Ok((Label::new("act.markRead").with("count", n), n))
+        }
+        Action::SetRoomTheme { room, theme } => {
+            let n = set_room_theme(b, mode, room, theme.as_deref())?;
+            Ok((Label::new("act.roomTheme").with("room", room), n))
+        }
+        Action::SetThemeState { id, parts, crafted } => {
+            let n = set_theme_state(b, mode, id, *parts, *crafted)?;
+            Ok((Label::new("act.themeState").with("id", id), n))
+        }
+        Action::SetStored {
+            room,
+            resource,
+            value,
+        } => {
+            let n = set_stored(b, mode, *room, resource, *value)?;
+            Ok((
+                Label::new("act.setStored")
+                    .with("key", resource)
+                    .with("value", value),
+                usize::from(n),
+            ))
+        }
+        Action::AddTeamItems {
+            team,
+            kind,
+            id,
+            count,
+            recipe,
+        } => {
+            let n = add_team_items(b, mode, *team, *kind, id, *count, *recipe)?;
+            Ok((
+                Label::new("act.addTeamItems")
+                    .with("id", id)
+                    .with("count", n),
+                n,
+            ))
+        }
+        Action::RemoveTeamItems { team, indices } => {
+            let n = remove_team_items(b, *team, indices)?;
+            Ok((Label::new("act.removeTeamItems").with("count", n), n))
+        }
+        Action::SetTeamThemeParts { team, id, parts } => {
+            let n = set_team_theme_parts(b, mode, *team, id, *parts)?;
+            Ok((Label::new("act.teamThemeParts").with("id", id), n))
+        }
+        Action::StartIncident {
+            room,
+            kind,
+            strength,
+        } => {
+            start_incident(b, mode, *room, *kind, *strength)?;
+            Ok((Label::new("act.startIncident"), 1))
+        }
+        Action::SetIncidentStrength { room, value } => {
+            let n = set_incident_strength(b, mode, *room, *value)?;
+            Ok((Label::new("act.incidentStrength"), usize::from(n)))
+        }
+        Action::AddUniqueDweller { id } => {
+            let name = add_unique_dweller(b, mode, id)?;
+            Ok((Label::new("act.addDweller").with("name", name), 1))
+        }
+        Action::AddPet { id, bonus_value } => {
+            add_pet(b, mode, id, *bonus_value)?;
+            Ok((
+                Label::new("act.addItems").with("id", id).with("count", 1),
+                1,
+            ))
         }
     }
 }
@@ -799,6 +1088,10 @@ fn field_rule(root: &Value, path: &[Seg], mode: Mode, v: f64) -> R<()> {
         (_, "level") if path.starts_with(&p(&ROOMS)) => Some((1, lim.room_level_max)),
         (_, "mergeLevel") => return Err(RuleError::ExpertOnly.into()),
         ("vault", "VaultTheme") => Some((0, lim.vault_theme_max)),
+        (_, "childRarity") => Some((1, 3)),
+        (_, "rating" | "weekRating" | "lastWeekRating") => Some((0, 100)),
+        (_, "pendingChildren") => Some((0, 3)),
+        ("childStat", "") => Some((1, 7)),
         ("resources" | "bonus", k) if RESOURCE_KEYS.contains(&k) => Some((0, RESOURCE_MAX)),
         ("health", "healthValue" | "radiationValue") => {
             let mut mp = path.to_vec();
@@ -846,6 +1139,122 @@ fn set_num(b: &mut Builder<'_>, path: Vec<Seg>, v: f64) -> R<bool> {
 fn dweller_path(root: &Value, id: i64) -> R<Vec<Seg>> {
     let i = dweller_index(root, id).ok_or(RuleError::NotFound)?;
     Ok(pi(&DWELLERS, i, &[]))
+}
+
+/// Lists that keep a quest from being offered again, by name.
+pub const QUEST_MEMORY: [(&str, [&str; 3]); 5] = [
+    (
+        "dailyHistory",
+        [
+            "completedQuestDataManager",
+            "dailyQuestPicker",
+            "historyDailies",
+        ],
+    ),
+    (
+        "weeklyHistory",
+        [
+            "completedQuestDataManager",
+            "weeklyQuestPicker",
+            "historyWeeklies",
+        ],
+    ),
+    (
+        "dailySkipped",
+        [
+            "completedQuestDataManager",
+            "dailyQuestSkipper",
+            "skippedQuests",
+        ],
+    ),
+    (
+        "weeklySkipped",
+        [
+            "completedQuestDataManager",
+            "weeklyQuestSkipper",
+            "skippedQuests",
+        ],
+    ),
+    (
+        "standaloneSkipped",
+        [
+            "completedQuestDataManager",
+            "standaloneQuestSkipper",
+            "skippedQuests",
+        ],
+    ),
+];
+
+/// Hair and face mask names the game has for a dweller of this gender.
+pub fn look_choices(gender: i64, field: &str) -> Vec<&'static str> {
+    let key = if gender == 2 { "male" } else { "female" };
+    if field == "helmet" {
+        return catalog()
+            .art
+            .as_ref()
+            .and_then(|a| a.dweller.get(key))
+            .map(|k| k.helmets.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+    }
+    let Some(l) = catalog().looks.get(key) else {
+        return Vec::new();
+    };
+    match field {
+        "hair" => l.hairs.iter().map(String::as_str).collect(),
+        "faceMask" => l
+            .beards
+            .iter()
+            .chain(&l.masks)
+            .map(String::as_str)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn set_look(b: &mut Builder<'_>, mode: Mode, id: i64, field: &str, value: &str) -> R<()> {
+    if !matches!(field, "hair" | "faceMask" | "helmet") {
+        return Err(RuleError::NotAllowed.into());
+    }
+    let base = dweller_path(b.root(), id)?;
+    let gender = b.get(&base).and_then(|d| int(d, &["gender"])).unwrap_or(1);
+    if mode == Mode::Normal && !value.is_empty() && !look_choices(gender, field).contains(&value) {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    let has = b.get(&join(&base, &[field])).is_some();
+    if value.is_empty() {
+        b.remove_key(base.clone(), field)?;
+    } else if has {
+        b.set(join(&base, &[field]), Value::str(value))?;
+    } else {
+        // Same place as the game writes it: hair, faceMask, helmet.
+        let o = b
+            .get(&base)
+            .and_then(Value::as_object)
+            .ok_or(RuleError::NotFound)?;
+        let before: &[&str] = match field {
+            "helmet" => &["faceMask", "hair", "pendingExperienceReward", "outfitColor"],
+            "faceMask" => &["hair", "pendingExperienceReward", "outfitColor"],
+            _ => &["pendingExperienceReward", "outfitColor"],
+        };
+        let at = before
+            .iter()
+            .find_map(|k| o.index_of(k))
+            .map_or(o.len(), |i| i + 1);
+        b.insert(base.clone(), at, Some(field), Value::str(value))?;
+    }
+    // The barber shop offers a hat or a face mask, never both.
+    if !value.is_empty() && mode == Mode::Normal {
+        match field {
+            "helmet" => {
+                b.remove_key(base, "faceMask")?;
+            }
+            "faceMask" => {
+                b.remove_key(base, "helmet")?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn for_dwellers(
@@ -1025,11 +1434,20 @@ fn equip(b: &mut Builder<'_>, mode: Mode, ids: &[i64], slot: Slot, item: Option<
         Slot::Pet => "equippedPet",
     };
     let mut n = 0;
+    let mut wrong_gender = 0;
     for owner in ids {
         let Some(i) = dweller_index(b.root(), *owner) else {
             continue;
         };
         let base = pi(&DWELLERS, i, &[]);
+        let gender = int(&arr(b.root(), &DWELLERS)[i], &["gender"]).unwrap_or(1);
+        if let (Slot::Outfit, Some(id), Mode::Normal) = (slot, item, mode) {
+            if !catalog().outfit_fits(id, gender) {
+                wrong_gender += 1;
+                continue;
+            }
+        }
+        let old_outfit = b.get(&join(&base, &[key, "id"])).and_then(Value::as_text);
         let changed = match (slot, item) {
             (Slot::Outfit, None) => b.set_key(base.clone(), key, item_value(kind, "jumpsuit"))?,
             (Slot::Weapon, None) => b.set_key(base.clone(), key, item_value(kind, "Fist"))?,
@@ -1074,9 +1492,25 @@ fn equip(b: &mut Builder<'_>, mode: Mode, ids: &[i64], slot: Slot, item: Option<
             }
             (_, Some(id)) => b.set_key(base.clone(), key, item_value(kind, id))?,
         };
+        // A new outfit gets one of its own colours, as the game does when equipping.
+        if let (Slot::Outfit, true) = (slot, changed) {
+            let new_id = item.unwrap_or("jumpsuit");
+            if old_outfit.as_deref() != Some(new_id)
+                && b.get(&join(&base, &["outfitColor"])).is_some()
+            {
+                let color = catalog()
+                    .outfit_art(new_id, gender)
+                    .and_then(|o| o.colors.first().copied())
+                    .unwrap_or(0xFFFF_FFFF);
+                b.set(join(&base, &["outfitColor"]), Value::int(i64::from(color)))?;
+            }
+        }
         if changed {
             n += 1;
         }
+    }
+    if n == 0 && wrong_gender > 0 {
+        return Err(RuleError::OutfitGender.into());
     }
     Ok(n)
 }
@@ -1520,43 +1954,30 @@ fn set_lunchboxes(b: &mut Builder<'_>, counts: &[i64; 4]) -> R<usize> {
 
 /// Checks that a room at a new merge level stays inside the grid and does
 /// not overlap other rooms or rocks in its row.
-pub fn merge_fits(root: &Value, room: i64, merge: i64) -> bool {
-    let Some(i) = room_index(root, room) else {
-        return false;
-    };
-    let rooms = arr(root, &ROOMS);
-    let r = &rooms[i];
-    let (Some(row), Some(col)) = (int(r, &["row"]), int(r, &["col"])) else {
-        return false;
-    };
-    let width = if text(r, &["type"]).as_deref() == Some("Elevator") {
-        1
-    } else {
-        3 * merge
-    };
-    let end = col + width;
-    if col < 0 || end > catalog().limits.grid_cols {
-        return false;
+pub fn merge_fits(root: &Value, mode: Mode, room: i64, merge: i64) -> bool {
+    merge_col(root, mode, room, merge).is_some()
+}
+
+/// Column the room starts at after resizing to `merge`, or None when no
+/// placement keeps it free of overlaps (and connected, in normal mode).
+pub fn merge_col(root: &Value, mode: Mode, room: i64, merge: i64) -> Option<i64> {
+    let i = room_index(root, room)?;
+    let r = &arr(root, &ROOMS)[i];
+    let kind = text(r, &["type"]).unwrap_or_default();
+    let (row, col) = (int(r, &["row"])?, int(r, &["col"])?);
+    let cur = int(r, &["mergeLevel"]).unwrap_or(1);
+    let delta = map::width_of(&kind, merge) - map::width_of(&kind, cur);
+    // Growing: right, half each way, left. Shrinking: keep the left edge,
+    // the middle, then the right edge, so the side touching a lift can stay.
+    let mut cols = vec![col];
+    if delta.abs() == 6 {
+        cols.push(col - delta.signum() * 3);
     }
-    for (j, o) in rooms.iter().enumerate() {
-        if j == i || int(o, &["row"]) != Some(row) {
-            continue;
-        }
-        let oc = int(o, &["col"]).unwrap_or(0);
-        let oe = oc + room_width(o);
-        if oc < end && col < oe {
-            return false;
-        }
+    if delta != 0 {
+        cols.push(col - delta);
     }
-    for rock in arr(root, &["vault", "rocks"]) {
-        if int(rock, &["r"]) == Some(row) {
-            let rc = int(rock, &["c"]).unwrap_or(-10);
-            if rc < end && col < rc + 2 {
-                return false;
-            }
-        }
-    }
-    true
+    cols.into_iter()
+        .find(|c| place(root, mode, &kind, row, *c, merge, Some(room)).is_ok())
 }
 
 fn set_merge(b: &mut Builder<'_>, mode: Mode, room: i64, merge: i64) -> R<()> {
@@ -1570,11 +1991,18 @@ fn set_merge(b: &mut Builder<'_>, mode: Mode, room: i64, merge: i64) -> R<()> {
         return Err(RuleError::NotAllowed.into());
     }
     rules::check_range(mode, merge, 1, rules::max_merge(&kind))?;
+    rules::check_room_shape(mode, &kind, merge, int(&r, &["level"]).unwrap_or(1))?;
     let (row, col) = (
         int(&r, &["row"]).unwrap_or(0),
         int(&r, &["col"]).unwrap_or(0),
     );
-    place(b.root(), mode, &kind, row, col, merge, Some(room))?;
+    let Some(new_col) = merge_col(b.root(), mode, room, merge) else {
+        place(b.root(), mode, &kind, row, col, merge, Some(room))?;
+        return Err(RuleError::RoomOverlap.into());
+    };
+    if new_col != col {
+        set_num(b, pi(&ROOMS, i, &["col"]), new_col as f64)?;
+    }
     set_num(b, pi(&ROOMS, i, &["mergeLevel"]), merge as f64)?;
     let cap = 2 * merge.max(1) as usize;
     for id in ints(&r, "dwellers").iter().skip(cap) {
@@ -1728,6 +2156,7 @@ fn add_room(
         };
         rules::check_range(mode, merge, 1, max_merge)?;
         rules::check_range(mode, level, 1, info.levels)?;
+        rules::check_room_shape(mode, kind, merge, level)?;
         if map::UNIQUE_ROOMS.contains(&kind) && map::rooms(b.root()).iter().any(|r| r.kind == kind)
         {
             return Err(RuleError::RoomUnique.into());
@@ -1928,12 +2357,14 @@ fn move_room(b: &mut Builder<'_>, mode: Mode, id: i64, row: i64, col: i64) -> R<
 
 fn set_room_level(b: &mut Builder<'_>, mode: Mode, id: i64, level: i64) -> R<()> {
     let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
-    let kind = text(&arr(b.root(), &ROOMS)[i], &["type"]).unwrap_or_default();
+    let r = &arr(b.root(), &ROOMS)[i];
+    let kind = text(r, &["type"]).unwrap_or_default();
+    let merge = int(r, &["mergeLevel"]).unwrap_or(1);
     let max = catalog()
-        .rooms
-        .iter()
-        .find(|r| r.kind == kind)
-        .map_or(catalog().limits.room_level_max, |r| r.levels);
+        .room(&kind)
+        .map_or(catalog().limits.room_level_max, |r| {
+            r.max_level(merge).max(1)
+        });
     rules::check_range(mode, level, 1, max)?;
     set_num(b, pi(&ROOMS, i, &["level"]), level as f64)?;
     Ok(())
@@ -2061,6 +2492,1186 @@ fn complete_tutorial(b: &mut Builder<'_>) -> R<usize> {
         }
     }
     Ok(n)
+}
+
+/// Marks every contextual hint as already shown (or not yet shown).
+fn set_hints(b: &mut Builder<'_>, shown: bool) -> R<usize> {
+    let base = p(&["tutorialManager"]);
+    let Some(o) = b.get(&base).and_then(Value::as_object).cloned() else {
+        return Err(RuleError::NotFound.into());
+    };
+    let mut n = 0;
+    for (k, v) in &o.0 {
+        let key = k.text();
+        if key.starts_with("Contextual")
+            && matches!(v, Value::Bool(_))
+            && b.set(join(&base, &[&key]), Value::Bool(shown))?
+        {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// Marks a current objective done, as the game does when its goal is met;
+/// the reward can then be collected in the game.
+fn complete_objective(b: &mut Builder<'_>, slot: usize) -> R<()> {
+    let base = vec![
+        Seg::Key("objectiveMgr".into()),
+        Seg::Key("slotArray".into()),
+        Seg::Index(slot),
+        Seg::Key("objective".into()),
+    ];
+    if b.get(&base).and_then(Value::as_object).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    let reqs = join(&base, &["requirements"]);
+    let n = b.get(&reqs).and_then(Value::as_array).map_or(0, Vec::len);
+    if n == 0 {
+        let id = b
+            .get(&join(&base, &["objectiveID"]))
+            .and_then(Value::as_text)
+            .unwrap_or_default();
+        if let Some(g) = catalog().objective(&id).and_then(|o| o.goal.as_ref()) {
+            let req = Value::obj(vec![
+                ("requirementID", Value::str(&g.requirement_id)),
+                ("satisfied", Value::Bool(true)),
+            ]);
+            if b.get(&reqs).is_some() {
+                b.insert(reqs.clone(), 0, None, req)?;
+            }
+        }
+    }
+    for i in 0..n {
+        let mut sat = reqs.clone();
+        sat.push(Seg::Index(i));
+        sat.push(Seg::Key("satisfied".into()));
+        if b.get(&sat).is_some() {
+            b.set(sat, Value::Bool(true))?;
+        }
+    }
+    b.set(join(&base, &["completed"]), Value::Bool(true))?;
+    Ok(())
+}
+
+/// The game checks the quest on load and picks another one if it is not available.
+fn replace_quest(b: &mut Builder<'_>, mode: Mode, kind: &str, index: usize, id: &str) -> R<()> {
+    let (prefix, path) = match kind {
+        "daily" => (
+            "Daily_",
+            pi(
+                &[
+                    "completedQuestDataManager",
+                    "dailyQuestPicker",
+                    "currentDailies",
+                ],
+                index,
+                &["questName"],
+            ),
+        ),
+        "weekly" => (
+            "Weekly_",
+            pi(
+                &[
+                    "completedQuestDataManager",
+                    "weeklyQuestPicker",
+                    "currentWeeklies",
+                ],
+                index,
+                &["questName"],
+            ),
+        ),
+        "standalone" => (
+            "Standalone_",
+            p(&[
+                "completedQuestDataManager",
+                "standaloneQuestPicker",
+                "currentStandalone",
+            ]),
+        ),
+        _ => return Err(RuleError::NotFound.into()),
+    };
+    if mode == Mode::Normal
+        && !(id.starts_with(prefix) && catalog().quests.iter().any(|q| q.id == id))
+    {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    if b.get(&path).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    b.set(path, Value::str(id))?;
+    Ok(())
+}
+
+/// Puts another objective into a slot. Requirements are left empty so the game sets
+/// them up from scratch when the save is loaded.
+fn replace_objective(b: &mut Builder<'_>, mode: Mode, slot: usize, id: &str, level: i64) -> R<()> {
+    let slots = p(&["objectiveMgr", "slotArray"]);
+    let list = b
+        .get(&slots)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if slot >= list.len() {
+        return Err(RuleError::NotFound.into());
+    }
+    let taken = list.iter().enumerate().any(|(i, s)| {
+        i != slot
+            && s.at(&p(&["objective", "objectiveID"]))
+                .and_then(Value::as_text)
+                .as_deref()
+                == Some(id)
+    });
+    if taken {
+        return Err(RuleError::NotAllowed.into());
+    }
+    let info = catalog().objective(id);
+    if mode == Mode::Normal {
+        let Some(o) = info else {
+            return Err(RuleError::NotInCatalog.into());
+        };
+        let survival = text(b.root(), &["vault", "VaultMode"]).as_deref() == Some("Survival");
+        if o.tutorial || o.season || (survival && !o.survival) || (!survival && !o.normal) {
+            return Err(RuleError::NotAllowed.into());
+        }
+        let max = o
+            .goal
+            .as_ref()
+            .and_then(|g| g.max_level)
+            .unwrap_or(i64::MAX);
+        rules::check_range(mode, level, 0, max)?;
+    } else if level < 0 {
+        return Err(RuleError::OutOfRange {
+            min: 0,
+            max: i64::MAX,
+        }
+        .into());
+    }
+    let obj = Value::obj(vec![
+        ("objectiveID", Value::str(id)),
+        ("requirements", Value::Array(Vec::new())),
+        ("completed", Value::Bool(false)),
+        ("incrementLevel", Value::int(level)),
+    ]);
+    let mut path = slots;
+    path.push(Seg::Index(slot));
+    path.push(Seg::Key("objective".into()));
+    b.set(path, obj)?;
+    Ok(())
+}
+
+/// The game counts time already waited up to a total, so both are set.
+fn set_stranger_time(b: &mut Builder<'_>, seconds: f64) -> R<()> {
+    if !(0.0..=1.0e7).contains(&seconds) {
+        return Err(RuleError::OutOfRange {
+            min: 0,
+            max: 10_000_000,
+        }
+        .into());
+    }
+    let base = p(&["MysteriousStranger"]);
+    let hiding =
+        text(b.root(), &["MysteriousStranger", "currentState"]).as_deref() == Some("Hiding");
+    let (total, passed) = if hiding {
+        ("timeToAppear", "remainingTimeToAppear")
+    } else {
+        ("timeToHide", "remainingTimeToHide")
+    };
+    let t = b
+        .get(&join(&base, &[total]))
+        .and_then(Value::as_f64)
+        .ok_or(RuleError::NotFound)?;
+    let t = t.max(seconds);
+    set_num(b, join(&base, &[total]), t)?;
+    if b.get(&join(&base, &[passed])).is_some() {
+        set_num(b, join(&base, &[passed]), t - seconds)?;
+    } else {
+        b.set(join(&base, &[passed]), Value::float2(t - seconds))?;
+    }
+    Ok(())
+}
+
+/// Shifts both ends of a task, so a recurrent task keeps its length when the game reloads it.
+fn set_task_time(b: &mut Builder<'_>, id: i64, seconds: f64) -> R<()> {
+    if !(0.0..=1.0e7).contains(&seconds) {
+        return Err(RuleError::OutOfRange {
+            min: 0,
+            max: 10_000_000,
+        }
+        .into());
+    }
+    let now = b
+        .get(&p(&["taskMgr", "time"]))
+        .and_then(Value::as_f64)
+        .ok_or(RuleError::NotFound)?;
+    let tasks = arr(b.root(), &["taskMgr", "tasks"]);
+    let i = tasks
+        .iter()
+        .position(|t| int(t, &["id"]) == Some(id))
+        .ok_or(RuleError::NotFound)?;
+    let end = tasks[i]
+        .get("endTime")
+        .and_then(Value::as_f64)
+        .unwrap_or(now);
+    let start = tasks[i]
+        .get("startTime")
+        .and_then(Value::as_f64)
+        .unwrap_or(now);
+    let delta = now + seconds - end;
+    set_num(
+        b,
+        pi(&["taskMgr", "tasks"], i, &["startTime"]),
+        start + delta,
+    )?;
+    set_num(b, pi(&["taskMgr", "tasks"], i, &["endTime"]), end + delta)?;
+    Ok(())
+}
+
+/// Marks an achievement as earned or not. The game reports earned ones to Steam on load.
+fn set_achievement(b: &mut Builder<'_>, mode: Mode, id: &str, done: bool) -> R<()> {
+    if mode == Mode::Normal && !catalog().achievements.iter().any(|a| a.objective_id == id) {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    let base = p(&["vault", "Achievements"]);
+    if b.get(&base).and_then(Value::as_object).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    let done_list = join(&base, &["completed"]);
+    if b.get(&done_list).is_none() {
+        b.set(done_list.clone(), Value::Array(Vec::new()))?;
+    }
+    let ids: Vec<Option<String>> = b
+        .get(&done_list)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().map(Value::as_text).collect())
+        .unwrap_or_default();
+    let progress = join(&base, &["objectivesInProgress"]);
+    if done {
+        if !ids.iter().any(|v| v.as_deref() == Some(id)) {
+            b.insert(done_list, ids.len(), None, Value::str(id))?;
+        }
+        let entries = b
+            .get(&progress)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        for (i, e) in entries.iter().enumerate().rev() {
+            if text(e, &["objectiveID"]).as_deref() == Some(id) {
+                b.remove(progress.clone(), i)?;
+            }
+        }
+    } else {
+        for (i, v) in ids.iter().enumerate().rev() {
+            if v.as_deref() == Some(id) {
+                b.remove(done_list.clone(), i)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Adds a quest to the completed list or takes it out.
+fn mark_quest(b: &mut Builder<'_>, mode: Mode, id: &str, done: bool) -> R<()> {
+    if mode == Mode::Normal && !catalog().quests.iter().any(|q| q.id == id) {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    let list = p(&["completedQuestDataManager", "completedQuests"]);
+    let pos = b.get(&list).and_then(Value::as_array).map(|a| {
+        (
+            a.len(),
+            a.iter().position(|v| v.as_text().as_deref() == Some(id)),
+        )
+    });
+    let Some((len, pos)) = pos else {
+        return Err(RuleError::NotFound.into());
+    };
+    match (done, pos) {
+        (true, None) => b.insert(list, len, None, Value::str(id))?,
+        (false, Some(i)) => {
+            b.remove(list, i)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+const UNLOCKS: [&str; 1] = ["unlockableMgr"];
+
+/// Blueprint objective of a room type when it is not unlocked yet.
+pub fn room_lock(root: &Value, kind: &str) -> Option<String> {
+    let id = catalog().room(kind)?.unlock.clone()?;
+    if catalog().unlockables.iter().any(|u| u.id == id && u.season) {
+        return None;
+    }
+    let claimed = arr(root, &["unlockableMgr", "claimed"])
+        .iter()
+        .any(|v| v.as_text().as_deref() == Some(id.as_str()));
+    if claimed || root.get("unlockableMgr").is_none() {
+        None
+    } else {
+        Some(id)
+    }
+}
+
+fn objective_entry_id(v: &Value) -> String {
+    v.as_text()
+        .or_else(|| v.get("objectiveID").and_then(Value::as_text))
+        .unwrap_or_default()
+}
+
+fn drop_objective(b: &mut Builder<'_>, list: &str, id: &str) -> R<usize> {
+    let lp = join(&p(&UNLOCKS), &[list]);
+    let mut n = 0;
+    while let Some(i) = b
+        .get(&lp)
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().position(|e| objective_entry_id(e) == id))
+    {
+        b.remove(lp.clone(), i)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+fn set_room_unlocked(b: &mut Builder<'_>, mode: Mode, kind: &str, unlocked: bool) -> R<usize> {
+    let id = catalog()
+        .room(kind)
+        .and_then(|r| r.unlock.clone())
+        .ok_or(RuleError::NotAllowed)?;
+    if b.get(&p(&UNLOCKS)).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    let mut n = drop_objective(b, "completed", &id)?;
+    if unlocked {
+        n += drop_objective(b, "objectivesInProgress", &id)?;
+        n += ensure_strings(
+            b,
+            p(&["unlockableMgr", "claimed"]),
+            [id].into_iter(),
+            |_| None,
+        )?;
+    } else {
+        if mode == Mode::Normal && map::rooms(b.root()).iter().any(|r| r.kind == kind) {
+            return Err(RuleError::RoomLocked.into());
+        }
+        n += drop_objective(b, "claimed", &id)?;
+    }
+    Ok(n)
+}
+
+fn recipe_ids() -> Vec<&'static str> {
+    let c = catalog();
+    c.weapons
+        .iter()
+        .filter(|w| w.recipe)
+        .map(|w| w.id.as_str())
+        .chain(c.outfits.iter().filter(|o| o.recipe).map(|o| o.id.as_str()))
+        .chain(c.themes.iter().filter(|t| t.recipe).map(|t| t.id.as_str()))
+        .collect()
+}
+
+fn remove_string(b: &mut Builder<'_>, path: Vec<Seg>, value: &str) -> R<usize> {
+    let mut n = 0;
+    while let Some(i) = b
+        .get(&path)
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().position(|v| v.as_text().as_deref() == Some(value)))
+    {
+        b.remove(path.clone(), i)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+fn set_recipe(b: &mut Builder<'_>, mode: Mode, id: &str, known: bool) -> R<usize> {
+    if mode == Mode::Normal && !recipe_ids().contains(&id) {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    let path = p(&["survivalW", "recipes"]);
+    if b.get(&path).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    if known {
+        ensure_strings(b, path, [id.to_string()].into_iter(), |_| None)
+    } else {
+        remove_string(b, path, id)
+    }
+}
+
+const COLLECTION_LISTS: [&str; 7] = [
+    "weapons",
+    "outfits",
+    "dwellers",
+    "pets",
+    "breeds",
+    "decorations",
+    "junk",
+];
+
+/// Clears the "new" marks in the journal and on room themes.
+fn mark_collection_read(b: &mut Builder<'_>) -> R<usize> {
+    let mut n = 0;
+    for key in COLLECTION_LISTS {
+        let path = p(&["survivalW", key]);
+        let Some(Value::Array(cur)) = b.get(&path) else {
+            continue;
+        };
+        let mut changed = 0;
+        let list: Vec<Value> = cur
+            .iter()
+            .map(|v| match v.as_text() {
+                Some(s) if s.starts_with('N') => {
+                    changed += 1;
+                    Value::str(&format!("O{}", &s[1..]))
+                }
+                _ => v.clone(),
+            })
+            .collect();
+        if changed > 0 {
+            b.set(path, Value::Array(list))?;
+            n += changed;
+        }
+    }
+    let mut flags: Vec<Vec<Seg>> = Vec::new();
+    for (i, _) in arr(b.root(), &["survivalW", "collectedThemes", "themeList"])
+        .iter()
+        .enumerate()
+    {
+        flags.push(pi(
+            &["survivalW", "collectedThemes", "themeList"],
+            i,
+            &["extraData", "IsNew"],
+        ));
+    }
+    if let Some(ev) = b
+        .get(&p(&["specialTheme", "eventsThemes"]))
+        .and_then(Value::as_object)
+    {
+        for k in ev.keys() {
+            flags.push(p(&[
+                "specialTheme",
+                "eventsThemes",
+                &k,
+                "extraData",
+                "IsNew",
+            ]));
+        }
+    }
+    for path in flags {
+        if b.get(&path).and_then(Value::as_bool) == Some(true) {
+            b.set(path, Value::Bool(false))?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+const THEME_LIST: [&str; 3] = ["survivalW", "collectedThemes", "themeList"];
+pub const THEME_PARTS: i64 = 9;
+
+fn theme_entry(id: &str, parts: i64, crafted: bool) -> Value {
+    Value::obj(vec![
+        ("id", Value::str(id)),
+        ("type", Value::str("Theme")),
+        ("hasBeenAssigned", Value::Bool(false)),
+        ("hasRandonWeaponBeenAssigned", Value::Bool(false)),
+        (
+            "extraData",
+            Value::obj(vec![
+                ("partsCollectedCount", Value::int(parts)),
+                ("IsCraftingInProgress", Value::Bool(false)),
+                ("IsCrafted", Value::Bool(crafted)),
+                ("IsClaimed", Value::Bool(crafted)),
+                ("IsClaimedInCraftingRoom", Value::Bool(crafted)),
+                ("IsNew", Value::Bool(crafted)),
+            ]),
+        ),
+    ])
+}
+
+/// Parts found (0..=9) and whether the theme is crafted and can be applied.
+pub fn theme_state(root: &Value, id: &str) -> (i64, bool) {
+    arr(root, &THEME_LIST)
+        .iter()
+        .find(|t| text(t, &["id"]).as_deref() == Some(id))
+        .map_or((0, false), |t| {
+            (
+                int(t, &["extraData", "partsCollectedCount"]).unwrap_or(0),
+                flag(t, &["extraData", "IsCrafted"]).unwrap_or(false),
+            )
+        })
+}
+
+fn set_theme_state(
+    b: &mut Builder<'_>,
+    mode: Mode,
+    id: &str,
+    parts: i64,
+    crafted: bool,
+) -> R<usize> {
+    if mode == Mode::Normal && catalog().theme(id).is_none() {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    rules::check_range(mode, parts, 0, THEME_PARTS)?;
+    if b.get(&p(&THEME_LIST)).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    let parts = if crafted { THEME_PARTS } else { parts };
+    let pos = arr(b.root(), &THEME_LIST)
+        .iter()
+        .position(|t| text(t, &["id"]).as_deref() == Some(id));
+    let mut n = 0;
+    match pos {
+        None if parts > 0 => {
+            b.push(p(&THEME_LIST), theme_entry(id, parts, crafted))?;
+            n += 1;
+        }
+        None => {}
+        Some(i) if parts == 0 => {
+            b.remove(p(&THEME_LIST), i)?;
+            n += 1;
+        }
+        Some(i) => {
+            let was_crafted =
+                flag(&arr(b.root(), &THEME_LIST)[i], &["extraData", "IsCrafted"]).unwrap_or(false);
+            let base = pi(&THEME_LIST, i, &["extraData"]);
+            let mut sets = vec![
+                ("partsCollectedCount", Value::int(parts)),
+                ("IsCrafted", Value::Bool(crafted)),
+                ("IsClaimed", Value::Bool(crafted)),
+                ("IsClaimedInCraftingRoom", Value::Bool(crafted)),
+            ];
+            if crafted != was_crafted {
+                sets.push(("IsCraftingInProgress", Value::Bool(false)));
+                sets.push(("IsNew", Value::Bool(crafted)));
+            }
+            for (k, v) in sets {
+                n += usize::from(b.set_key(base.clone(), k, v)?);
+            }
+        }
+    }
+    let recipes = p(&["survivalW", "recipes"]);
+    if b.get(&recipes).is_some() {
+        n += if parts >= THEME_PARTS {
+            ensure_strings(b, recipes, [id.to_string()].into_iter(), |_| None)?
+        } else {
+            remove_string(b, recipes, id)?
+        };
+    }
+    if !crafted {
+        if let Some(t) = catalog().theme(id) {
+            let key = p(&["specialTheme", "themeByRoomType"]);
+            let applied = b
+                .get(&key)
+                .and_then(|m| m.get(&t.room))
+                .and_then(Value::as_text);
+            if applied.as_deref() == Some(t.theme.as_str()) {
+                n += usize::from(b.remove_key(key, &t.room)?);
+            }
+        }
+    }
+    Ok(n)
+}
+
+/// Theme shown by every room of the type; `None` restores the standard look.
+fn set_room_theme(b: &mut Builder<'_>, mode: Mode, room: &str, theme: Option<&str>) -> R<usize> {
+    let key = p(&["specialTheme", "themeByRoomType"]);
+    if b.get(&key).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    let Some(id) = theme else {
+        return Ok(usize::from(b.remove_key(key, room)?));
+    };
+    let t = catalog().theme(id).ok_or(RuleError::NotInCatalog)?;
+    if mode == Mode::Normal && t.room != room {
+        return Err(RuleError::NotAllowed.into());
+    }
+    let mut n = 0;
+    if !theme_state(b.root(), id).1 {
+        n += set_theme_state(b, mode, id, THEME_PARTS, true)?;
+    }
+    n += usize::from(b.set_key(key, room, Value::str(&t.theme))?);
+    Ok(n)
+}
+
+/// Ready-to-collect amount of a production room.
+fn set_stored(b: &mut Builder<'_>, mode: Mode, room: i64, resource: &str, value: f64) -> R<bool> {
+    let i = room_index(b.root(), room).ok_or(RuleError::NotFound)?;
+    let r = &arr(b.root(), &ROOMS)[i];
+    if mode == Mode::Normal {
+        let kind = text(r, &["type"]).unwrap_or_default();
+        let batch = catalog()
+            .room(&kind)
+            .and_then(|info| {
+                info.batch(
+                    int(r, &["mergeLevel"]).unwrap_or(1),
+                    int(r, &["level"]).unwrap_or(1),
+                )
+            })
+            .and_then(|m| m.get(resource).copied())
+            .ok_or(RuleError::NotAllowed)?;
+        rules::check_range(mode, value.round() as i64, 0, batch.round() as i64)?;
+    }
+    let path = pi(&ROOMS, i, &["storage", "resources", resource]);
+    if b.get(&path).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    set_num(b, path, value)
+}
+
+fn team_base(root: &Value, team: usize) -> R<Vec<Seg>> {
+    let base = pi(&["vault", "wasteland", "teams"], team, &["teamEquipment"]);
+    if root.at(&base).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    Ok(base)
+}
+
+/// Items a team carries that count against its limit (recipes do not).
+pub fn team_load(team: &Value) -> usize {
+    team.at(&p(&["teamEquipment", "inventory", "items"]))
+        .and_then(Value::as_array)
+        .map_or(0, |a| {
+            a.iter()
+                .filter(|it| {
+                    !flag(it, &["extraData", "isRecipe"]).unwrap_or(false)
+                        && text(it, &["id"]).as_deref() != Some("Ultracite")
+                })
+                .count()
+        })
+}
+
+fn add_team_items(
+    b: &mut Builder<'_>,
+    mode: Mode,
+    team: usize,
+    kind: ItemKind,
+    id: &str,
+    count: i64,
+    recipe: bool,
+) -> R<usize> {
+    let base = team_base(b.root(), team)?;
+    if mode == Mode::Normal {
+        if !matches!(kind, ItemKind::Weapon | ItemKind::Outfit | ItemKind::Junk) {
+            return Err(RuleError::NotAllowed.into());
+        }
+        rules::check_item(mode, kind, id)?;
+        if recipe && !recipe_ids().contains(&id) {
+            return Err(RuleError::NotAllowed.into());
+        }
+        rules::check_range(mode, count, 1, rules::ITEM_ADD_MAX)?;
+        let team_v = &arr(b.root(), &["vault", "wasteland", "teams"])[team];
+        let room = catalog().limits.team_items_max as usize;
+        if !recipe && team_load(team_v) + count.max(0) as usize > room {
+            return Err(RuleError::InventoryFull.into());
+        }
+    }
+    let mut item = item_value(kind, id);
+    if recipe {
+        if let Some(o) = item.as_object_mut() {
+            o.0.push((
+                json::JsonStr::new("extraData"),
+                Value::obj(vec![("isRecipe", Value::Bool(true))]),
+            ));
+        }
+    }
+    let list = join(&base, &["inventory", "items"]);
+    for _ in 0..count.max(0) {
+        b.push(list.clone(), item.clone())?;
+    }
+    Ok(count.max(0) as usize)
+}
+
+fn remove_team_items(b: &mut Builder<'_>, team: usize, indices: &[usize]) -> R<usize> {
+    let list = join(&team_base(b.root(), team)?, &["inventory", "items"]);
+    let mut sorted = indices.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut n = 0;
+    for i in sorted.into_iter().rev() {
+        b.remove(list.clone(), i)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+fn set_team_theme_parts(
+    b: &mut Builder<'_>,
+    mode: Mode,
+    team: usize,
+    id: &str,
+    parts: i64,
+) -> R<usize> {
+    if mode == Mode::Normal && catalog().theme(id).is_none() {
+        return Err(RuleError::NotInCatalog.into());
+    }
+    rules::check_range(mode, parts, 0, THEME_PARTS)?;
+    let list = join(
+        &team_base(b.root(), team)?,
+        &["collectedThemes", "themeList"],
+    );
+    let pos = b.get(&list).and_then(Value::as_array).and_then(|a| {
+        a.iter()
+            .position(|t| text(t, &["id"]).as_deref() == Some(id))
+    });
+    match pos {
+        None if parts > 0 => {
+            if b.get(&list).is_none() {
+                return Err(RuleError::NotFound.into());
+            }
+            b.push(list, theme_entry(id, parts, false))?;
+            Ok(1)
+        }
+        None => Ok(0),
+        Some(i) if parts == 0 => {
+            b.remove(list, i)?;
+            Ok(1)
+        }
+        Some(i) => {
+            let mut path = list;
+            path.push(Seg::Index(i));
+            path.push(Seg::Key("extraData".into()));
+            Ok(usize::from(b.set_key(
+                path,
+                "partsCollectedCount",
+                Value::int(parts),
+            )?))
+        }
+    }
+}
+
+const EMERGENCY: [&str; 2] = ["vault", "emergencyData"];
+
+/// Incidents that start inside a room; door attacks need enemy positions the save does not hold.
+pub const ROOM_INCIDENTS: [i64; 4] = [0, 1, 4, 7];
+
+/// Room types that never have incidents of their own.
+pub const NO_INCIDENT_ROOMS: [&str; 3] = ["Elevator", "Entrance", "FakeWasteland"];
+
+fn incident_rooms(root: &Value) -> Vec<usize> {
+    arr(root, &ROOMS)
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| text(r, &["currentStateName"]).as_deref() == Some("RoomEmergency"))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+pub fn room_max_health(r: &Value) -> Option<f64> {
+    let kind = text(r, &["type"])?;
+    let h = catalog().room(&kind)?.max_health(
+        int(r, &["mergeLevel"]).unwrap_or(1),
+        int(r, &["level"]).unwrap_or(1),
+    );
+    (h > 0.0).then_some(h)
+}
+
+/// Ends the current incident the way the game leaves a vault after one.
+fn finish_emergency(b: &mut Builder<'_>) -> R<usize> {
+    let mut n = 0;
+    for i in incident_rooms(b.root()) {
+        let base = pi(&ROOMS, i, &[]);
+        n += usize::from(b.set_key(base.clone(), "currentStateName", Value::str("Idle"))?);
+        b.set_key(base.clone(), "currentState", Value::obj(vec![]))?;
+        if b.get(&join(&base, &["roomHealth", "damageValue"]))
+            .is_some()
+        {
+            b.set(
+                join(&base, &["roomHealth", "damageValue"]),
+                Value::float2(0.0),
+            )?;
+        }
+    }
+    let em = p(&EMERGENCY);
+    if b.get(&em).is_none() {
+        return Ok(n);
+    }
+    let task = int(b.root(), &["vault", "emergencyData", "cicleTaskId"]);
+    for (k, v) in [
+        ("active", Value::Bool(false)),
+        ("failedPreviousWave", Value::Bool(false)),
+        ("currentWave", Value::int(0)),
+        ("graceTimeLeft", Value::int(-1)),
+    ] {
+        if b.get(&join(&em, &[k])).is_some() {
+            n += usize::from(b.set(join(&em, &[k]), v)?);
+        }
+    }
+    for k in [
+        "cicleTaskId",
+        "mode",
+        "consumedFood",
+        "consumedEnergy",
+        "consumedWater",
+        "emergencyConsumption",
+        "raider",
+        "deathclaw",
+        "ghoul",
+        "protectron",
+        "alien",
+        "scorched",
+        "securitron",
+        "enclaveSecurity",
+        "enclavePowerArmor",
+        "gen1Synth",
+        "gen2Synth",
+    ] {
+        n += usize::from(b.remove_key(em.clone(), k)?);
+    }
+    if let Some(t) = task.filter(|t| *t >= 0) {
+        remove_tasks(b, &[t])?;
+    }
+    Ok(n)
+}
+
+fn start_incident(b: &mut Builder<'_>, mode: Mode, room: i64, kind: i64, strength: f64) -> R<()> {
+    let i = room_index(b.root(), room).ok_or(RuleError::NotFound)?;
+    let r = arr(b.root(), &ROOMS)[i].clone();
+    let rk = text(&r, &["type"]).unwrap_or_default();
+    if mode == Mode::Normal {
+        if !ROOM_INCIDENTS.contains(&kind) || NO_INCIDENT_ROOMS.contains(&rk.as_str()) {
+            return Err(RuleError::NotAllowed.into());
+        }
+        if flag(b.root(), &["vault", "emergencyData", "active"]) == Some(true) {
+            return Err(RuleError::IncidentActive.into());
+        }
+        if (strength * 100.0).round() < 10.0 || strength > 1.0 {
+            return Err(RuleError::OutOfRange { min: 10, max: 100 }.into());
+        }
+    }
+    let max = room_max_health(&r).ok_or(RuleError::NotInCatalog)?;
+    let damage = (max * strength.clamp(0.01, 1.0)).max(1.0);
+    let base = pi(&ROOMS, i, &[]);
+    for task in [
+        r.at(&p(&["currentState", "taskId"]))
+            .and_then(Value::as_i64),
+        r.at(&p(&["currentState", "breedingTaskId"]))
+            .and_then(Value::as_i64),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|t| *t >= 0)
+    {
+        remove_tasks(b, &[task])?;
+    }
+    b.set_key(
+        base.clone(),
+        "currentStateName",
+        Value::str("RoomEmergency"),
+    )?;
+    b.set_key(
+        base.clone(),
+        "currentState",
+        Value::obj(vec![
+            ("mode", Value::int(kind)),
+            ("controllerAdditionnalData", Value::obj(vec![])),
+        ]),
+    )?;
+    b.set_key(
+        base.clone(),
+        "roomHealth",
+        Value::obj(vec![
+            ("damageValue", Value::float2(damage)),
+            ("initialValue", Value::float2(damage)),
+        ]),
+    )?;
+    for j in 0..arr(b.root(), &ROOMS).len() {
+        let path = pi(&ROOMS, j, &["emergencyDone"]);
+        if b.get(&path).and_then(Value::as_bool) == Some(true) {
+            b.set(path, Value::Bool(false))?;
+        }
+    }
+    let em = p(&EMERGENCY);
+    if b.get(&em).is_none() {
+        return Err(RuleError::NotFound.into());
+    }
+    for (k, v) in [
+        ("active", Value::Bool(true)),
+        ("cicleTaskId", Value::int(-1)),
+        ("mode", Value::int(kind)),
+        ("consumedFood", Value::float2(0.0)),
+        ("consumedEnergy", Value::float2(0.0)),
+        ("consumedWater", Value::float2(0.0)),
+        ("emergencyConsumption", Value::obj(vec![])),
+    ] {
+        b.set_key(em.clone(), k, v)?;
+    }
+    Ok(())
+}
+
+/// Incident strength: room damage share for room incidents, raider health for raids.
+fn set_incident_strength(
+    b: &mut Builder<'_>,
+    mode: Mode,
+    room: Option<i64>,
+    value: f64,
+) -> R<bool> {
+    match room {
+        Some(id) => {
+            let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
+            let r = &arr(b.root(), &ROOMS)[i];
+            if text(r, &["currentStateName"]).as_deref() != Some("RoomEmergency") {
+                return Err(RuleError::NotAllowed.into());
+            }
+            let max = room_max_health(r).ok_or(RuleError::NotInCatalog)?;
+            if mode == Mode::Normal && !(0.01..=1.0).contains(&value) {
+                return Err(RuleError::OutOfRange { min: 1, max: 100 }.into());
+            }
+            set_num(
+                b,
+                pi(&ROOMS, i, &["roomHealth", "damageValue"]),
+                (max * value).max(1.0),
+            )
+        }
+        None => {
+            let base = p(&["vault", "emergencyData", "raider"]);
+            let max = b
+                .get(&join(&base, &["lifeMax"]))
+                .and_then(Value::as_f64)
+                .ok_or(RuleError::NotFound)?;
+            if mode == Mode::Normal && !(1.0..=max.max(1.0)).contains(&value) {
+                return Err(RuleError::OutOfRange {
+                    min: 1,
+                    max: max.round() as i64,
+                }
+                .into());
+            }
+            set_num(b, join(&base, &["life"]), value)
+        }
+    }
+}
+
+fn mark_in_journal(b: &mut Builder<'_>, list: &str, code: &str) -> R<usize> {
+    let path = p(&["survivalW", list]);
+    if b.get(&path).is_none() {
+        return Ok(0);
+    }
+    ensure_strings(b, path, [format!("N{code}")].into_iter(), |s| {
+        s.get(1..).map(str::to_string)
+    })
+}
+
+/// Weapon and outfit of a new dweller go to the journal like in the game.
+fn journal_equipment(b: &mut Builder<'_>, outfit: &str, weapon: &str) -> R<()> {
+    if let Some(o) = catalog().outfit(outfit).filter(|o| !o.hidden) {
+        mark_in_journal(b, "outfits", &o.code)?;
+    }
+    if let Some(w) = catalog().weapon(weapon).filter(|w| !w.hidden) {
+        mark_in_journal(b, "weapons", &w.code)?;
+    }
+    Ok(())
+}
+
+fn add_unique_dweller(b: &mut Builder<'_>, mode: Mode, id: &str) -> R<String> {
+    let u = catalog()
+        .unique_dweller(id)
+        .ok_or(RuleError::NotInCatalog)?;
+    if mode == Mode::Normal {
+        if !u.in_journal() {
+            return Err(RuleError::NotAllowed.into());
+        }
+        if arr(b.root(), &DWELLERS).len() >= MAX_DWELLERS {
+            return Err(RuleError::TooManyDwellers.into());
+        }
+    }
+    let new_id = free_dweller_id(b.root())?;
+    let mut d = new_dweller(new_id, &u.first_name, &u.last_name, u.gender);
+    let endurance = u.special.get(2).copied().unwrap_or(1);
+    let hp = catalog().initial_max_health(endurance);
+    let weapon = if u.weapon.is_empty() {
+        "Fist"
+    } else {
+        u.weapon.as_str()
+    };
+    let mut sets: Vec<(Vec<Seg>, Value)> = vec![
+        (p(&["health", "healthValue"]), Value::float2(hp)),
+        (p(&["health", "maxHealth"]), Value::float2(hp)),
+        (p(&["outfitColor"]), Value::int(0xFFFF_FFFF)),
+        (
+            p(&["equipedOutfit"]),
+            item_value(ItemKind::Outfit, &u.outfit),
+        ),
+        (p(&["equipedWeapon"]), item_value(ItemKind::Weapon, weapon)),
+        (
+            p(&["rarity"]),
+            Value::str(if u.rarity.is_empty() {
+                "Normal"
+            } else {
+                &u.rarity
+            }),
+        ),
+    ];
+    for (k, v) in u.special.iter().enumerate().take(7) {
+        sets.push((
+            vec![
+                Seg::Key("stats".into()),
+                Seg::Key("stats".into()),
+                Seg::Index(k + 1),
+                Seg::Key("value".into()),
+            ],
+            Value::int(*v),
+        ));
+    }
+    if !u.random_body {
+        if let Some(c) = u.skin_color {
+            sets.push((p(&["skinColor"]), Value::int(i64::from(c))));
+        }
+        if let Some(c) = u.hair_color {
+            sets.push((p(&["hairColor"]), Value::int(i64::from(c))));
+        }
+    }
+    for (path, v) in sets {
+        if let Some(slot) = d.at_mut(&path) {
+            *slot = v;
+        }
+    }
+    if let Some(o) = d.as_object_mut() {
+        o.0.retain(|(k, _)| !k.eq_text("hair") && !k.eq_text("faceMask"));
+        let at =
+            o.0.iter()
+                .position(|(k, _)| k.eq_text("pendingExperienceReward"))
+                .map_or(o.0.len(), |i| i + 1);
+        let mut extra = vec![("uniqueData", Value::str(&u.id))];
+        if u.random_body {
+            extra.push(("hair", Value::str("01")));
+        } else {
+            if let Some(h) = &u.hair {
+                extra.push(("hair", Value::str(h)));
+            }
+            if let Some(f) = &u.face_mask {
+                extra.push(("faceMask", Value::str(f)));
+            }
+        }
+        for (j, (k, v)) in extra.into_iter().enumerate() {
+            o.0.insert(at + j, (json::JsonStr::new(k), v));
+        }
+    }
+    b.push(p(&DWELLERS), d)?;
+    bump_dweller_counter(b, new_id)?;
+    if u.rarity == "Legendary" {
+        mark_in_journal(b, "dwellers", &u.id)?;
+    }
+    journal_equipment(b, &u.outfit, weapon)?;
+    Ok(format!("{} {}", u.first_name, u.last_name)
+        .trim()
+        .to_string())
+}
+
+fn import_dweller(b: &mut Builder<'_>, mode: Mode, json_text: &str) -> R<String> {
+    let src = json::parse(json_text).map_err(|e| ActionError::BadJson(e.to_string()))?;
+    if src.as_object().is_none() || int(&src, &["gender"]).is_none() {
+        return Err(RuleError::WrongType.into());
+    }
+    if mode == Mode::Normal && arr(b.root(), &DWELLERS).len() >= MAX_DWELLERS {
+        return Err(RuleError::TooManyDwellers.into());
+    }
+    let gender = int(&src, &["gender"]).unwrap_or(1);
+    let new_id = free_dweller_id(b.root())?;
+    let pet = src.get("equippedPet").cloned();
+    let mut d = clone_dweller(src, new_id);
+    // Everything that pointed into the other vault is cleared.
+    if let Some(r) = d.at_mut(&p(&["relations", "relations"])) {
+        *r = Value::Array(Vec::new());
+    }
+    if let Some(Value::Array(a)) = d.at_mut(&p(&["relations", "ascendants"])) {
+        for x in a.iter_mut() {
+            *x = Value::int(-1);
+        }
+    }
+    for key in ["daysOnWasteland", "hoursOnWasteland"] {
+        if let Some(v) = d.at_mut(&p(&[key])) {
+            *v = Value::int(0);
+        }
+    }
+    if let Some(o) = d.as_object_mut() {
+        o.0.retain(|(k, _)| {
+            ![
+                "dwellerRoom",
+                "dwellerPosition",
+                "dwellerCriticalMeter",
+                "dwellerCriticalFactor",
+                "equipment",
+            ]
+            .iter()
+            .any(|x| k.eq_text(x))
+        });
+    }
+    // Items this vault's game does not know, or that do not fit, become the defaults.
+    if mode == Mode::Normal {
+        let outfit = text(&d, &["equipedOutfit", "id"]).unwrap_or_default();
+        if catalog().outfit(&outfit).is_none() || !catalog().outfit_fits(&outfit, gender) {
+            if let Some(v) = d.at_mut(&p(&["equipedOutfit"])) {
+                *v = item_value(ItemKind::Outfit, "jumpsuit");
+            }
+        }
+        let weapon = text(&d, &["equipedWeapon", "id"]).unwrap_or_default();
+        if catalog().weapon(&weapon).is_none() {
+            if let Some(v) = d.at_mut(&p(&["equipedWeapon"])) {
+                *v = item_value(ItemKind::Weapon, "Fist");
+            }
+        }
+    }
+    let name = dweller_name(&d);
+    b.push(p(&DWELLERS), d)?;
+    bump_dweller_counter(b, new_id)?;
+    if let Some(pet_id) = pet
+        .as_ref()
+        .and_then(|v| v.get("id"))
+        .and_then(Value::as_text)
+        .filter(|id| mode == Mode::Expert || catalog().pet(id).is_some())
+    {
+        equip(b, mode, &[new_id], Slot::Pet, Some(&pet_id))?;
+        // Keep the pet's own bonus and name from the other save.
+        if let (Some(i), Some(v)) = (dweller_index(b.root(), new_id), pet) {
+            let pet_name = v
+                .at(&p(&["extraData", "uniqueName"]))
+                .and_then(Value::as_text);
+            b.set(pi(&DWELLERS, i, &["equippedPet"]), v)?;
+            if let (Some(n), Some(ai)) = (pet_name, pet_actor_index(b.root(), new_id)) {
+                b.set(pi(&ACTORS, ai, &["name"]), Value::str(&n))?;
+            }
+        }
+    }
+    if let Some(u) = text(
+        b.get(&pi(
+            &DWELLERS,
+            dweller_index(b.root(), new_id).unwrap_or(0),
+            &[],
+        ))
+        .unwrap_or(&Value::Null),
+        &["uniqueData"],
+    )
+    .filter(|u| !u.is_empty())
+    {
+        if catalog()
+            .unique_dweller(&u)
+            .is_some_and(|x| x.rarity == "Legendary")
+        {
+            mark_in_journal(b, "dwellers", &u)?;
+        }
+    }
+    Ok(name)
+}
+
+fn add_pet(b: &mut Builder<'_>, mode: Mode, id: &str, bonus_value: f64) -> R<()> {
+    let pet = catalog().pet(id).ok_or(RuleError::NotInCatalog)?;
+    if mode == Mode::Normal
+        && !(pet.bonus_min.floor()..=pet.bonus_max.ceil()).contains(&bonus_value)
+    {
+        return Err(RuleError::OutOfRange {
+            min: pet.bonus_min.floor() as i64,
+            max: pet.bonus_max.ceil() as i64,
+        }
+        .into());
+    }
+    let mut item = item_value(ItemKind::Pet, id);
+    if let Some(slot) = item.at_mut(&p(&["extraData", "bonusValue"])) {
+        *slot = Value::int(bonus_value.round() as i64);
+    }
+    b.push(p(&ITEMS), item)?;
+    mark_in_journal(b, "pets", &pet.code)?;
+    mark_in_journal(b, "breeds", &pet.breed_code.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2358,6 +3969,7 @@ mod tests {
             col,
             merge: 1,
             level: 1,
+            unlock: false,
         };
         let err = |r: R<Transaction>| match r {
             Err(ActionError::Rule(e)) => e,
@@ -2384,11 +3996,23 @@ mod tests {
         let last = arr(&root, &ROOMS).last().cloned().unwrap();
         assert_eq!(int(&last, &["deserializeID"]), Some(6));
         assert!(last.get("storage").is_none());
-        run(&mut root, &ctx, &add("Overseer", 1, 0)).unwrap_err();
+        let sized = |kind: &str, row, col, merge| Action::AddRoom {
+            kind: kind.into(),
+            row,
+            col,
+            merge,
+            level: 1,
+            unlock: false,
+        };
+        run(&mut root, &ctx, &sized("Overseer", 1, 0, 2)).unwrap_err();
         run(&mut root, &ctx, &add("Elevator", 2, 9)).unwrap();
-        run(&mut root, &ctx, &add("Overseer", 2, 10)).unwrap();
         assert_eq!(
-            err(run(&mut root, &ctx, &add("Overseer", 2, 3))),
+            err(run(&mut root, &ctx, &add("Overseer", 2, 10))),
+            RuleError::RoomSize
+        );
+        run(&mut root, &ctx, &sized("Overseer", 2, 10, 2)).unwrap();
+        assert_eq!(
+            err(run(&mut root, &ctx, &sized("Overseer", 2, 3, 2))),
             RuleError::RoomUnique
         );
 
@@ -2418,7 +4042,7 @@ mod tests {
             &Action::MoveRoom {
                 room: 6,
                 row: 2,
-                col: 16,
+                col: 20,
             },
         )
         .unwrap_err();
@@ -2428,7 +4052,7 @@ mod tests {
             &Action::MoveRoom {
                 room: 6,
                 row: 2,
-                col: 13,
+                col: 16,
             },
         )
         .unwrap();
@@ -2450,5 +4074,458 @@ mod tests {
 
         run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 3 }).unwrap();
         run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 4 }).unwrap_err();
+    }
+
+    #[test]
+    fn dweller_import_and_quest_memory() {
+        let mut root = json::parse(
+            r#"{"dwellers":{"dwellers":[{"serializeId":1,"name":"A","gender":1}],"actors":[],"id":1,"mrhId":1},
+            "survivalW":{"dwellers":[]},
+            "completedQuestDataManager":{"dailyQuestPicker":{"historyDailies":[{"questName":"Daily_01"},{"questName":"Daily_02"}]}}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let other = r#"{"serializeId":7,"name":"Bob","lastName":"X","gender":2,"savedRoom":44,"assigned":true,
+            "relations":{"relations":[{"id":3}],"partner":9,"lastPartner":9,"ascendants":[3,4,-1,-1,-1,-1]},
+            "equipedOutfit":{"id":"NoSuchOutfit","type":"Outfit"},"equipedWeapon":{"id":"Fist","type":"Weapon"},
+            "dwellerRoom":5,"daysOnWasteland":3}"#;
+        run(
+            &mut root,
+            &ctx,
+            &Action::ImportDweller { json: other.into() },
+        )
+        .unwrap();
+        let d = &arr(&root, &DWELLERS)[1];
+        assert_eq!(int(d, &["serializeId"]), Some(2));
+        assert_eq!(int(d, &["savedRoom"]), Some(-1));
+        assert_eq!(int(d, &["relations", "partner"]), Some(-1));
+        assert!(arr(d, &["relations", "relations"]).is_empty());
+        assert_eq!(arr(d, &["relations", "ascendants"])[0].as_i64(), Some(-1));
+        assert_eq!(
+            text(d, &["equipedOutfit", "id"]).as_deref(),
+            Some("jumpsuit")
+        );
+        assert!(d.get("dwellerRoom").is_none());
+        assert_eq!(int(d, &["daysOnWasteland"]), Some(0));
+        run(
+            &mut root,
+            &ctx,
+            &Action::ForgetQuest {
+                list: "dailyHistory".into(),
+                quest: "Daily_01".into(),
+            },
+        )
+        .unwrap();
+        let h = arr(
+            &root,
+            &[
+                "completedQuestDataManager",
+                "dailyQuestPicker",
+                "historyDailies",
+            ],
+        );
+        assert_eq!(h.len(), 1);
+    }
+
+    #[test]
+    fn outfits_follow_gender_and_colours() {
+        let mut root = json::parse(
+            r#"{"dwellers":{"dwellers":[
+              {"serializeId":1,"gender":1,"outfitColor":4294967295,"equipedOutfit":{"id":"jumpsuit","type":"Outfit","hasBeenAssigned":false,"hasRandonWeaponBeenAssigned":false}},
+              {"serializeId":2,"gender":2,"outfitColor":4294967295,"equipedOutfit":{"id":"jumpsuit","type":"Outfit","hasBeenAssigned":false,"hasRandonWeaponBeenAssigned":false}}]}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let male_only = "AbrahamSpecial";
+        assert!(!catalog().outfit_fits(male_only, 1));
+        let equip = |ids: Vec<i64>| Action::Equip {
+            ids,
+            slot: Slot::Outfit,
+            item: Some(male_only.into()),
+        };
+        assert!(matches!(
+            run(&mut root, &ctx, &equip(vec![1])),
+            Err(ActionError::Rule(RuleError::OutfitGender))
+        ));
+        assert_eq!(
+            run(&mut root, &ctx, &equip(vec![1, 2])).unwrap().affected,
+            1
+        );
+        let colors = &catalog().outfit_art(male_only, 2).unwrap().colors;
+        let d = &arr(&root, &DWELLERS)[1];
+        assert_eq!(
+            int(d, &["outfitColor"]),
+            colors.first().map(|c| i64::from(*c))
+        );
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetColor {
+                ids: vec![2],
+                field: "outfitColor".into(),
+                rgb: 0x123456,
+            },
+        )
+        .ok();
+        let v = int(&arr(&root, &DWELLERS)[1], &["outfitColor"]).unwrap() as u32;
+        assert!(colors.contains(&v));
+    }
+
+    #[test]
+    fn room_grows_left_when_right_is_taken() {
+        let mut root = json::parse(
+            r#"{"vault":{"rooms":[
+              {"type":"Storage","class":"Facility","mergeLevel":1,"row":1,"col":12,"level":1,"dwellers":[],"deserializeID":1},
+              {"type":"Elevator","class":"Utility","mergeLevel":1,"row":1,"col":15,"level":1,"dwellers":[],"deserializeID":2}],
+              "rocks":[]}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Expert,
+            original: &orig,
+        };
+        assert_eq!(merge_col(&root, Mode::Expert, 1, 2), Some(9));
+        assert_eq!(merge_col(&root, Mode::Expert, 1, 3), Some(6));
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetMergeLevel { room: 1, merge: 3 },
+        )
+        .unwrap();
+        let r = &arr(&root, &ROOMS)[0];
+        assert_eq!(
+            (int(r, &["col"]), int(r, &["mergeLevel"])),
+            (Some(6), Some(3))
+        );
+    }
+
+    #[test]
+    fn hints_objectives_and_quests() {
+        let mut root = json::parse(
+            r#"{"tutorialManager":{"phase":"Phase5","ContextualBabies":false,"ContextualJunk":true},
+            "objectiveMgr":{"slotArray":[{"objective":{"objectiveID":"MakeFriend1","requirements":[{"requirementID":"r1","satisfied":false}],"completed":false,"incrementLevel":1},"incLevel":1}]},
+            "completedQuestDataManager":{"completedQuests":["TutorialQuest_01"]}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        run(&mut root, &ctx, &Action::SetHints { shown: true }).unwrap();
+        assert_eq!(
+            root.at(&p(&["tutorialManager", "ContextualBabies"])),
+            Some(&Value::Bool(true))
+        );
+        run(&mut root, &ctx, &Action::CompleteObjective { slot: 0 }).unwrap();
+        let obj = p(&["objectiveMgr", "slotArray"]);
+        let done = root
+            .at(&obj)
+            .and_then(|a| a.at(&[Seg::Index(0), Seg::Key("objective".into())]))
+            .cloned()
+            .unwrap();
+        assert_eq!(done.get("completed"), Some(&Value::Bool(true)));
+        assert_eq!(
+            done.at(&[
+                Seg::Key("requirements".into()),
+                Seg::Index(0),
+                Seg::Key("satisfied".into())
+            ]),
+            Some(&Value::Bool(true))
+        );
+        let quest = catalog().quests[0].id.clone();
+        run(
+            &mut root,
+            &ctx,
+            &Action::MarkQuest {
+                id: quest.clone(),
+                done: true,
+            },
+        )
+        .unwrap();
+        let list = |r: &Value| {
+            arr(r, &["completedQuestDataManager", "completedQuests"])
+                .iter()
+                .filter_map(Value::as_text)
+                .collect::<Vec<_>>()
+        };
+        assert!(list(&root).contains(&quest));
+        run(
+            &mut root,
+            &ctx,
+            &Action::MarkQuest {
+                id: quest.clone(),
+                done: false,
+            },
+        )
+        .unwrap();
+        assert!(!list(&root).contains(&quest));
+        assert!(run(
+            &mut root,
+            &ctx,
+            &Action::MarkQuest {
+                id: "NoSuchQuest".into(),
+                done: true
+            }
+        )
+        .is_err());
+    }
+    #[test]
+    fn objectives_achievements_and_timers() {
+        let mut root = json::parse(
+            r#"{"taskMgr":{"id":9,"time":100.00,"tasks":[{"startTime":50.00,"endTime":150.00,"id":8,"paused":false}]},
+            "vault":{"VaultMode":"Normal","Achievements":{"objectivesInProgress":[{"objectiveID":"merge_food_01","requirements":[],"completed":false,"incrementLevel":0}],"completed":[]}},
+            "objectiveMgr":{"taskID":8,"slotArray":[
+              {"objective":{"objectiveID":"MakeFriend1","requirements":[{"requirementID":"r1","satisfied":false}],"completed":false,"incrementLevel":1},"incLevel":1},
+              {"objective":{"objectiveID":"Babies1","requirements":[],"completed":false,"incrementLevel":0},"incLevel":1}]}}"#,
+        )
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let slot0 = |r: &Value| {
+            r.at(&p(&["objectiveMgr", "slotArray"]))
+                .and_then(|a| a.at(&[Seg::Index(0), Seg::Key("objective".into())]))
+                .cloned()
+                .unwrap()
+        };
+        let replace = |id: &str, level: i64| Action::ReplaceObjective {
+            slot: 0,
+            id: id.into(),
+            level,
+        };
+        assert!(run(&mut root, &ctx, &replace("Babies1", 0)).is_err());
+        assert!(run(&mut root, &ctx, &replace("KillDeathclawAtVaultDoor1", 0)).is_err());
+        assert!(run(&mut root, &ctx, &replace("Babies2", 99)).is_err());
+        run(&mut root, &ctx, &replace("Babies2", 2)).unwrap();
+        let o = slot0(&root);
+        assert_eq!(text(&o, &["objectiveID"]).as_deref(), Some("Babies2"));
+        assert_eq!(int(&o, &["incrementLevel"]), Some(2));
+        let info = catalog().objective("Babies2").unwrap();
+        assert_eq!(info.goal_value(2), 6);
+        assert!(info.text(false, 2, &[]).contains('6'));
+        run(&mut root, &ctx, &Action::CompleteObjective { slot: 0 }).unwrap();
+        let o = slot0(&root);
+        assert_eq!(o.get("completed"), Some(&Value::Bool(true)));
+        assert_eq!(arr(&o, &["requirements"]).len(), 1);
+
+        let done = |r: &Value| {
+            arr(r, &["vault", "Achievements", "completed"])
+                .iter()
+                .filter_map(Value::as_text)
+                .collect::<Vec<_>>()
+        };
+        let ach = |done: bool| Action::SetAchievement {
+            id: "merge_food_01".into(),
+            done,
+        };
+        run(&mut root, &ctx, &ach(true)).unwrap();
+        assert_eq!(done(&root), vec!["merge_food_01".to_string()]);
+        assert!(arr(&root, &["vault", "Achievements", "objectivesInProgress"]).is_empty());
+        run(&mut root, &ctx, &ach(false)).unwrap();
+        assert!(done(&root).is_empty());
+
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetTaskTime {
+                id: 8,
+                seconds: 10.0,
+            },
+        )
+        .unwrap();
+        let t = &arr(&root, &["taskMgr", "tasks"])[0];
+        assert_eq!(t.get("endTime").and_then(Value::as_f64), Some(110.0));
+        assert_eq!(t.get("startTime").and_then(Value::as_f64), Some(10.0));
+    }
+
+    #[test]
+    fn blueprints_themes_incidents_and_journal() {
+        let mut root = vault_with_lift();
+        let extra = json::parse(
+            r#"{"unlockableMgr":{"objectivesInProgress":[{"objectiveID":"BarUnlock","requirements":[]}],"completed":[],"claimed":["StorageUnlock","GymUnlock"]},
+            "survivalW":{"weapons":["N1"],"outfits":[],"dwellers":[],"pets":[],"breeds":[],"decorations":[],"junk":["OAlarmClock"],"recipes":[],"claimedRecipes":[],"collectedThemes":{"themeList":[]}},
+            "specialTheme":{"themeByRoomType":{},"eventsThemes":{"Cafeteria_Xmas":{"id":"Cafeteria_Xmas","extraData":{"IsNew":true}}}}}"#,
+        )
+        .unwrap();
+        let vault_extra = json::parse(
+            r#"{"emergencyData":{"active":false,"randomEventTaskId":-1},
+            "wasteland":{"teams":[{"teamEquipment":{"storage":{},"inventory":{"items":[]},"collectedThemes":{"themeList":[]}}}]}}"#,
+        )
+        .unwrap();
+        let top = root.as_object_mut().unwrap();
+        top.0.extend(extra.as_object().unwrap().0.iter().cloned());
+        let vault = root
+            .at_mut(&p(&["vault"]))
+            .unwrap()
+            .as_object_mut()
+            .unwrap();
+        vault
+            .0
+            .extend(vault_extra.as_object().unwrap().0.iter().cloned());
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let bar = |unlock| Action::AddRoom {
+            kind: "Bar".into(),
+            row: 1,
+            col: 16,
+            merge: 1,
+            level: 1,
+            unlock,
+        };
+        assert!(matches!(
+            run(&mut root, &ctx, &bar(false)),
+            Err(ActionError::Rule(RuleError::RoomLocked))
+        ));
+        run(&mut root, &ctx, &bar(true)).unwrap();
+        assert!(arr(&root, &["unlockableMgr", "objectivesInProgress"]).is_empty());
+        assert!(room_lock(&root, "Bar").is_none());
+        assert!(integrity::check(&root)
+            .iter()
+            .all(|i| i.code != "room_locked"));
+        let lock = Action::SetRoomUnlocked {
+            room: "Bar".into(),
+            unlocked: false,
+        };
+        assert!(run(&mut root, &ctx, &lock).is_err());
+
+        run(&mut root, &ctx, &Action::MarkCollectionRead).unwrap();
+        assert_eq!(
+            arr(&root, &["survivalW", "weapons"])[0]
+                .as_text()
+                .as_deref(),
+            Some("O1")
+        );
+        let ev = p(&[
+            "specialTheme",
+            "eventsThemes",
+            "Cafeteria_Xmas",
+            "extraData",
+            "IsNew",
+        ]);
+        assert_eq!(root.at(&ev).and_then(Value::as_bool), Some(false));
+
+        let theme = "LivingQuartersBrotherOfStell";
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetRoomTheme {
+                room: "LivingQuarters".into(),
+                theme: Some(theme.into()),
+            },
+        )
+        .unwrap();
+        let applied = p(&["specialTheme", "themeByRoomType", "LivingQuarters"]);
+        assert_eq!(
+            root.at(&applied).and_then(Value::as_text).as_deref(),
+            Some("BrotherOfSteel")
+        );
+        assert_eq!(theme_state(&root, theme), (9, true));
+        assert!(arr(&root, &["survivalW", "recipes"])
+            .iter()
+            .any(|v| v.as_text().as_deref() == Some(theme)));
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetThemeState {
+                id: theme.into(),
+                parts: 3,
+                crafted: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(theme_state(&root, theme), (3, false));
+        assert!(root.at(&applied).is_none());
+
+        run(
+            &mut root,
+            &ctx,
+            &Action::StartIncident {
+                room: 4,
+                kind: 1,
+                strength: 0.5,
+            },
+        )
+        .unwrap();
+        let lq = &arr(&root, &ROOMS)[3];
+        assert_eq!(
+            text(lq, &["currentStateName"]).as_deref(),
+            Some("RoomEmergency")
+        );
+        assert_eq!(
+            lq.at(&p(&["roomHealth", "damageValue"]))
+                .and_then(Value::as_f64),
+            Some(50.0)
+        );
+        assert_eq!(
+            flag(&root, &["vault", "emergencyData", "active"]),
+            Some(true)
+        );
+        run(&mut root, &ctx, &Action::FinishEmergency).unwrap();
+        assert_eq!(
+            text(&arr(&root, &ROOMS)[3], &["currentStateName"]).as_deref(),
+            Some("Idle")
+        );
+        assert_eq!(
+            flag(&root, &["vault", "emergencyData", "active"]),
+            Some(false)
+        );
+        assert!(root.at(&p(&["vault", "emergencyData", "mode"])).is_none());
+
+        run(
+            &mut root,
+            &ctx,
+            &Action::AddUniqueDweller {
+                id: "L_Preston".into(),
+            },
+        )
+        .unwrap();
+        let d = arr(&root, &DWELLERS).last().unwrap();
+        assert_eq!(text(d, &["uniqueData"]).as_deref(), Some("L_Preston"));
+        assert_eq!(text(d, &["hair"]).as_deref(), Some("16"));
+        assert_eq!(special(d, 3), Some(8));
+        assert_eq!(int(d, &["gender"]), Some(2));
+        assert!(arr(&root, &["survivalW", "dwellers"])
+            .iter()
+            .any(|v| v.as_text().as_deref() == Some("NL_Preston")));
+
+        let add = Action::AddTeamItems {
+            team: 0,
+            kind: ItemKind::Weapon,
+            id: "BBGun".into(),
+            count: 2,
+            recipe: false,
+        };
+        run(&mut root, &ctx, &add).unwrap();
+        let items = p(&["vault", "wasteland", "teams"]);
+        let team = &arr(&root, &["vault", "wasteland", "teams"])[0];
+        assert_eq!(team_load(team), 2);
+        run(
+            &mut root,
+            &ctx,
+            &Action::RemoveTeamItems {
+                team: 0,
+                indices: vec![0],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            team_load(&root.at(&items).unwrap().as_array().unwrap()[0]),
+            1
+        );
     }
 }

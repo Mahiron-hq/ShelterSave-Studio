@@ -16,6 +16,8 @@
 
 //! An open save: original tree, current tree and undo history.
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::actions::{self, Action, ActionError, Ctx};
@@ -37,9 +39,19 @@ pub struct Document {
     pub file_name: String,
     pub source: SourceKind,
     original: Value,
-    root: Value,
+    /// Shared so the UI can hold it for a frame without copying the tree.
+    root: Arc<Value>,
     history: History,
     original_issues: Vec<Issue>,
+    /// Cached `root != original`, cleared on every change.
+    dirty: std::cell::Cell<Option<bool>>,
+    revision: u64,
+}
+
+/// Unique across documents, so a cache keyed by it never mixes two files.
+fn next_revision() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Everything needed to restore an editing session (web local cache).
@@ -79,14 +91,21 @@ impl Document {
             file_name: file_name.to_string(),
             source,
             original: root.clone(),
-            root,
+            root: Arc::new(root),
             history: History::default(),
             original_issues,
+            dirty: std::cell::Cell::new(Some(false)),
+            revision: next_revision(),
         }
     }
 
     pub fn root(&self) -> &Value {
         &self.root
+    }
+
+    /// The current tree, cheap to keep while the document is edited.
+    pub fn shared_root(&self) -> Arc<Value> {
+        self.root.clone()
     }
 
     pub fn original(&self) -> &Value {
@@ -102,45 +121,67 @@ impl Document {
             mode,
             original: &self.original,
         };
-        let tx = actions::run(&mut self.root, &ctx, action)?;
+        let tx = actions::run(Arc::make_mut(&mut self.root), &ctx, action)?;
+        self.touch();
         self.history.record(tx.clone());
         Ok(tx)
     }
 
     pub fn undo(&mut self) -> Result<Option<Label>, EditError> {
-        self.history.undo(&mut self.root)
+        self.touch();
+        self.history.undo(Arc::make_mut(&mut self.root))
     }
 
     pub fn redo(&mut self) -> Result<Option<Label>, EditError> {
-        self.history.redo(&mut self.root)
+        self.touch();
+        self.history.redo(Arc::make_mut(&mut self.root))
     }
 
     pub fn go_to(&mut self, step: usize) -> Result<(), EditError> {
-        self.history.go_to(&mut self.root, step)
+        self.touch();
+        self.history.go_to(Arc::make_mut(&mut self.root), step)
     }
 
     /// Resets every change as one undoable step.
     pub fn reset_to_original(&mut self) -> Option<Transaction> {
-        if self.root == self.original {
+        if *self.root == self.original {
             return None;
         }
         let op = Op::Set {
             path: Vec::new(),
-            old: self.root.clone(),
+            old: (*self.root).clone(),
             new: self.original.clone(),
         };
-        self.root = self.original.clone();
+        self.root = Arc::new(self.original.clone());
+        self.dirty.set(Some(false));
+        self.revision = next_revision();
         let tx = Transaction {
             label: Label::new("act.resetAll"),
             ops: vec![op],
             affected: 1,
+            action: None,
         };
         self.history.record(tx.clone());
         Some(tx)
     }
 
+    fn touch(&mut self) {
+        self.dirty.set(None);
+        self.revision = next_revision();
+    }
+
+    /// Changes whenever the tree or the saved baseline changes.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     pub fn is_dirty(&self) -> bool {
-        self.root != self.original
+        if let Some(d) = self.dirty.get() {
+            return d;
+        }
+        let d = *self.root != self.original;
+        self.dirty.set(Some(d));
+        d
     }
 
     pub fn is_modified(&self, path: &[Seg]) -> bool {
@@ -182,8 +223,28 @@ impl Document {
 
     /// Marks the current state as saved: it becomes the new baseline.
     pub fn mark_saved(&mut self) {
-        self.original = self.root.clone();
+        self.original = (*self.root).clone();
+        self.dirty.set(Some(false));
+        self.revision = next_revision();
         self.original_issues = integrity::check(&self.root);
+    }
+
+    /// The same file as written later by the game, with this document's edits
+    /// repeated on it. Returns the new document and how many edits did not apply.
+    pub fn rebase(&self, bytes: &[u8], mode: Mode) -> Result<(Document, usize), FormatError> {
+        let mut doc = Document::open(bytes, &self.file_name)?;
+        let mut failed = 0;
+        for tx in self.history.done() {
+            let action = tx
+                .action
+                .as_ref()
+                .and_then(|a| serde_json::from_value::<Action>(a.clone()).ok());
+            match action.map(|a| doc.apply(mode, &a)) {
+                Some(Ok(_) | Err(ActionError::Nothing)) => {}
+                _ => failed += 1,
+            }
+        }
+        Ok((doc, failed))
     }
 
     pub fn session(&self) -> Session {
@@ -199,8 +260,10 @@ impl Document {
         let root = sav::read_json(session.original.as_bytes())?;
         let mut doc = Document::from_root(root, &session.file_name, session.source);
         for tx in session.history.done() {
-            crate::edit::apply_all(&mut doc.root, &tx.ops).map_err(|_| FormatError::NotObject)?;
+            crate::edit::apply_all(Arc::make_mut(&mut doc.root), &tx.ops)
+                .map_err(|_| FormatError::NotObject)?;
         }
+        doc.touch();
         doc.history = session.history;
         Ok(doc)
     }
@@ -235,5 +298,35 @@ mod tests {
         assert!(!doc.is_dirty());
         doc.undo().unwrap();
         assert!(doc.is_dirty());
+    }
+
+    #[test]
+    fn edits_move_to_a_newer_file() {
+        let old = sav::encrypt_text(
+            r#"{"vault":{"VaultName":"1","storage":{"resources":{"Nuka":5,"Food":1}}},"dwellers":{"dwellers":[]}}"#,
+        );
+        let newer = sav::encrypt_text(
+            r#"{"vault":{"VaultName":"1","storage":{"resources":{"Nuka":7,"Food":3}}},"dwellers":{"dwellers":[]}}"#,
+        );
+        let mut doc = Document::open(old.as_bytes(), "Vault1.sav").unwrap();
+        doc.apply(
+            Mode::Normal,
+            &Action::SetResource {
+                bonus: false,
+                key: "Nuka".into(),
+                value: 99.0,
+            },
+        )
+        .unwrap();
+        let (back, failed) = doc.rebase(newer.as_bytes(), Mode::Normal).unwrap();
+        assert_eq!(failed, 0);
+        let res = |d: &Document, k: &str| {
+            d.root()
+                .at(&crate::vault::p(&["vault", "storage", "resources", k]))
+                .and_then(Value::as_f64)
+        };
+        assert_eq!(res(&back, "Nuka"), Some(99.0));
+        assert_eq!(res(&back, "Food"), Some(3.0));
+        assert!(back.history().can_undo());
     }
 }

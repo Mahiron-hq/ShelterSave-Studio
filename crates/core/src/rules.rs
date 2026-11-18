@@ -50,7 +50,10 @@ pub struct Warning {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleError {
-    OutOfRange { min: i64, max: i64 },
+    OutOfRange {
+        min: i64,
+        max: i64,
+    },
     NotAllowed,
     NotInCatalog,
     WrongType,
@@ -61,7 +64,15 @@ pub enum RuleError {
     RoomBusy,
     RoomFixed,
     RoomUnique,
+    /// Room type not unlocked in the blueprint book, or built while being locked.
+    RoomLocked,
+    IncidentActive,
+    InventoryFull,
     NotFound,
+    /// The game has no room of this type with that size or upgrade level.
+    RoomSize,
+    /// The outfit has no version for the dweller's gender.
+    OutfitGender,
 }
 
 impl std::fmt::Display for RuleError {
@@ -95,6 +106,22 @@ pub fn check_item(mode: Mode, kind: ItemKind, id: &str) -> Result<(), RuleError>
 
 pub fn max_merge(room_type: &str) -> i64 {
     catalog().room(room_type).map_or(3, |r| r.max_merge)
+}
+
+/// The game loads only the sizes and upgrade levels it has models for; any other
+/// combination stops it while loading the vault.
+pub fn check_room_shape(mode: Mode, kind: &str, merge: i64, level: i64) -> Result<(), RuleError> {
+    if mode == Mode::Expert || kind == "Elevator" {
+        return Ok(());
+    }
+    let Some(room) = catalog().room(kind) else {
+        return Ok(());
+    };
+    let max = room.max_level(merge);
+    if max == 0 || level < 1 || level > max {
+        return Err(RuleError::RoomSize);
+    }
+    Ok(())
 }
 
 fn warn(
@@ -223,25 +250,43 @@ pub fn warnings(root: &Value) -> Vec<Warning> {
             for slot in ["equipedOutfit", "equipedWeapon", "equippedPet"] {
                 item_known(&mut out, at(&[slot]), root);
             }
+            let outfit = at(&["equipedOutfit", "id"]);
+            if let (Some(id), Some(g)) = (
+                root.at(&outfit).and_then(Value::as_text),
+                root.at(&at(&["gender"])).and_then(Value::as_i64),
+            ) {
+                if !catalog().outfit_fits(&id, g) {
+                    warn(
+                        &mut out,
+                        "outfit_gender",
+                        outfit,
+                        &Value::str(&id),
+                        None,
+                        None,
+                    );
+                }
+            }
             let _ = prefix;
         }
     }
     for (i, r) in arr(root, &ROOMS).iter().enumerate() {
         let kind = text(r, &["type"]).unwrap_or_default();
+        let merge = int(r, &["mergeLevel"]).unwrap_or(1);
+        let info = catalog().room(&kind);
         range(
             &mut out,
             "room_level",
             pi(&ROOMS, i, &["level"]),
             root,
             1.0,
-            lim.room_level_max as f64,
+            info.map_or(lim.room_level_max, |x| x.max_level(merge).max(1)) as f64,
         );
         range(
             &mut out,
             "room_merge",
             pi(&ROOMS, i, &["mergeLevel"]),
             root,
-            1.0,
+            info.map_or(1, |x| x.min_merge) as f64,
             max_merge(&kind) as f64,
         );
         if !kind.is_empty() && catalog().room(&kind).is_none() {

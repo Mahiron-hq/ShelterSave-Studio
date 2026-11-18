@@ -37,6 +37,7 @@ pub const HISTORY: &str = "\u{e1f4}";
 pub const DOWNLOAD: &str = "\u{e0b6}";
 pub const UPLOAD: &str = "\u{e19d}";
 pub const RESET: &str = "\u{e14b}";
+pub const REFRESH: &str = "\u{e148}";
 pub const SHIELD: &str = "\u{e1fe}";
 pub const PAW: &str = "\u{e4f9}";
 pub const SWORD: &str = "\u{e2b2}";

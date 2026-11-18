@@ -42,6 +42,16 @@ pub enum ThemePref {
     Dark,
 }
 
+/// Where the dweller card scrolls when another dweller is opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DwellerScroll {
+    /// Same place for every dweller.
+    #[default]
+    Shared,
+    Top,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -52,12 +62,15 @@ pub struct Settings {
     pub russian_item_names: bool,
     pub mode: Mode,
     pub confirm_mass: bool,
+    pub dweller_scroll: DwellerScroll,
     pub scale: f32,
     pub backups: bool,
     pub backup_dir: Option<PathBuf>,
     pub backup_keep: u32,
     pub save_dirs: Vec<PathBuf>,
     pub recent: Vec<PathBuf>,
+    /// Game folder for pictures; None means look for it automatically.
+    pub game_dir: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -70,12 +83,14 @@ impl Default for Settings {
             russian_item_names: false,
             mode: Mode::Normal,
             confirm_mass: true,
+            dweller_scroll: DwellerScroll::Shared,
             scale: 1.0,
             backups: true,
             backup_dir: None,
             backup_keep: 10,
             save_dirs: Vec::new(),
             recent: Vec::new(),
+            game_dir: None,
         }
     }
 }

@@ -18,8 +18,10 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod art;
 mod dialogs;
 mod files;
+mod game;
 mod icons;
 mod search;
 mod sec_dwellers;

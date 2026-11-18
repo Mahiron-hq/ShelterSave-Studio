@@ -182,6 +182,28 @@ pub fn humanize(key: &str) -> String {
     title_case(out.trim())
 }
 
+const INT_FLAGS: [&str; 14] = [
+    "arrivalTimerClaimTutorialCompleted",
+    "arrivalTimerTutorialCompleted",
+    "builtUltraciteMine",
+    "canShowArrivalTimerClaimTutorial",
+    "canShowSeasonButton",
+    "dwellerSpawnedDuringScorchedAttack",
+    "questTutorialCompleted",
+    "scorchedAttackWarningShown",
+    "scorchedTimerTutorialCompleted",
+    "seasonalQuestTutorialCompleted",
+    "seasonTutorialCompleted",
+    "skippedTutorial",
+    "spinToWinTutorialCompleted",
+    "ultraciteWeaponCraftingTutorialCompleted",
+];
+
+/// Yes/no values the game stores as the numbers 0 and 1.
+pub fn is_int_flag(key: &str) -> bool {
+    key.starts_with("hasSent") || INT_FLAGS.contains(&key)
+}
+
 /// Every dictionary entry, for checks.
 pub fn entries() -> impl Iterator<Item = (&'static String, &'static [String; 4])> {
     table().iter()
