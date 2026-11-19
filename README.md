@@ -12,20 +12,30 @@ Fallout Shelter save editor for desktop and the web.
 - ПК-версия: Rust и egui, Windows, Linux и macOS, работает без сети.
 - Веб-версия: тот же редактор в браузере. Файл сохранения обрабатывается только на устройстве пользователя.
 
-### Чем он лучше других редакторов
+### Чем он отличается от других редакторов
 
-Большинство редакторов сохранений Fallout Shelter показывают расшифрованный JSON или несколько полей вроде крышек и ресурсов. ShelterSave-Studio сделан иначе:
+Сведения о других редакторах взяты из их страниц и репозиториев (ноябрь 2026).
 
-- **Правится всё, что есть в файле.** Жители, внешность, питомцы, склад, комнаты на карте убежища, темы, происшествия, задания, пустошь, достижения, рецепты, коллекции, таймеры и события.
-- **Понятные названия.** У каждого пункта есть человеческое название, пояснение, единицы и допустимый диапазон. Предметы выбираются из списка с поиском, а не вводятся кодами.
-- **Сохранение не испортится.** В обычном режиме значения не выходят за пределы, которые допускает игра. Проверка целостности находит и исправляет ошибки, из-за которых игра падает или зависает.
-- **Экспертный режим.** Доступен любой ключ файла: дерево JSON, технические поля и значения вне игровых пределов с предупреждением.
+- **[Shelter Editor](https://github.com/rakion99/shelter-editor)** (rakion99, браузер). Ресурсы, режим и тема убежища, массовые действия (убрать камни, открыть все комнаты и рецепты, SPECIAL на максимум, вылечить всех), имя, пол, здоровье, уровень, цвет кожи и волос, снаряжение жителей, отряды в пустоши. Отдельные комнаты, задания и питомцы не редактируются.
+- **[Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor)** (devvyyxyz, браузер). Ресурсы, жители с внешностью и SPECIAL, склад, список комнат и просмотр планировки, отряды, сезонный пропуск, рецепты, темы, история изменений, проверка файла. По списку планов авторов пока нет отмены правок, редактора заданий, питомцев, детей, происшествий и карты планировки.
+- **[FSSE](https://github.com/robot9706/FSSE)** (robot9706, Windows и Android). Репозиторий в архиве с 2020 года, программа не обновляется.
+- **[FOSE](https://github.com/goobycorp/fose)** (GoobyCorp). Скрипт командной строки: расшифровывает и зашифровывает файл, править JSON нужно вручную.
+
+Что есть только в ShelterSave-Studio:
+
+- **Карта убежища с перестановкой комнат мышью.** Комнату можно перетащить, объединить, разделить, скопировать, построить новую и убрать камни. Редактор проверяет, что комната помещается и соединена с лифтом, как этого требует игра.
+- **Проверка целостности по коду игры.** Находит и исправляет то, из-за чего игра падает или зависает: например, мастерскую не того размера или комнату, которая ещё не открыта.
 - **Файл не меняется без нужды.** Сохранение без правок совпадает с исходным побайтно: числа, порядок ключей и неизвестные поля остаются как были.
-- **Отмена и журнал.** Любую правку, в том числе массовую, можно отменить и повторить. Перед записью видно, что именно изменилось.
-- **Защита от потерь.** Резервные копии, атомарная запись, восстановление правок после сбоя. Программа замечает, что игра сохранила файл, и предлагает загрузить новую версию.
-- **Картинки из игры.** ПК-версия показывает предметы, комнаты и внешность жителей по файлам игры, установленной у пользователя. В программе картинок нет.
-- **Конфиденциальность.** ПК-версия не выходит в сеть. Сайт не получает файл сохранения и не ставит cookie.
-- **Русский и английский** интерфейс. Названия игровых объектов совпадают с официальной русской локализацией.
+- **Отмена и повтор любой правки,** в том числе массовой, журнал правок и список всех изменений перед записью.
+- **Значения в пределах игры.** Пределы взяты из данных игры, поэтому в обычном режиме нельзя записать то, что игра не примет. Экспертный режим открывает любой ключ файла и дерево JSON.
+- **Картинки и внешность из вашей игры.** Предметы, комнаты, темы и житель в полный рост, как в игре. Карточки предметов с описанием, уроном, бонусами, ценой изготовления и продажи. Ни одной картинки из игры в редакторе нет: ПК-версия читает их из установленной игры, сайт — из файла игры, который выбирает сам пользователь.
+- **Происшествия:** начать пожар или нашествие в нужной комнате, задать силу, завершить, приостановить случайные происшествия.
+- **Задания и цели:** заменить, выполнить, изменить сложность, забыть пройденные задания. Достижения с прогрессом.
+- **Дети и семьи:** будущие дети (редкость, близнецы, цвета), беременность, партнёры, предки.
+- **Перенос жителя из другого сохранения;** легендарные жители и питомцы из журнала игры.
+- **Пустошь:** добыча отряда, темы, стимуляторы, время возвращения, расшифрованный дневник отряда.
+- **ПК-версия:** замечает, что игра сохранила файл, и предлагает загрузить новую версию; восстанавливает правки после сбоя; делает резервные копии; не выходит в сеть.
+- **Названия как в игре.** Русский и английский интерфейс, названия предметов из официальной русской локализации.
 - **Открытый код** под лицензией GPL-3.0.
 
 Сборка из исходников: `cargo run --release -p shelter-save-studio`.
@@ -43,20 +53,30 @@ Work in progress. The first release, 1.0.0, is not published yet.
 - Desktop: Rust and egui, runs on Windows, Linux and macOS, works offline.
 - Web: the same editor in the browser. The save file never leaves the user's device.
 
-### Why it is better than other editors
+### How it differs from other editors
 
-Most Fallout Shelter save editors show the decrypted JSON or a few fields such as caps and resources. ShelterSave-Studio works differently:
+Facts about other editors come from their pages and repositories (November 2026).
 
-- **Everything in the file can be edited.** Dwellers, looks, pets, storage, rooms on the vault map, themes, incidents, quests, the wasteland, achievements, recipes, collections, timers and events.
-- **Plain names.** Every item has a readable name, a short explanation, units and an allowed range. Items are picked from a searchable list instead of typed as codes.
-- **Saves stay safe.** In normal mode values stay inside the limits the game accepts. The integrity check finds and fixes problems that make the game crash or hang.
-- **Expert mode.** Every key of the file is reachable: the JSON tree, technical fields, and values outside game limits with a warning.
+- **[Shelter Editor](https://github.com/rakion99/shelter-editor)** (rakion99, browser). Resources, vault mode and theme, bulk actions (remove rocks, unlock all rooms and recipes, max SPECIAL, heal everyone), dweller name, gender, health, level, skin and hair colour, equipment, wasteland teams. Single rooms, quests and pets cannot be edited.
+- **[Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor)** (devvyyxyz, browser). Resources, dwellers with looks and SPECIAL, storage, room list and layout view, teams, season pass, recipes, themes, change history, file validation. According to its own roadmap it does not yet have undo, a quest editor, pets, children, incidents or a layout map.
+- **[FSSE](https://github.com/robot9706/FSSE)** (robot9706, Windows and Android). The repository has been archived since 2020 and is not updated.
+- **[FOSE](https://github.com/goobycorp/fose)** (GoobyCorp). A command-line script that decrypts and encrypts the file; the JSON has to be edited by hand.
+
+Only in ShelterSave-Studio:
+
+- **Vault map with drag-and-drop rooms.** Rooms can be moved, merged, split, copied and built, and rocks removed. The editor checks that a room fits and is connected to an elevator, as the game requires.
+- **Integrity check based on the game code.** Finds and fixes what makes the game crash or hang, such as a workshop of the wrong size or a room that is not unlocked yet.
 - **No needless changes.** A save written without edits is byte-identical to the original: numbers, key order and unknown fields are kept as they were.
-- **Undo and history.** Every edit, including bulk edits, can be undone and redone. Before writing you see exactly what changed.
-- **Protection against loss.** Backups, atomic writes, recovery of edits after a crash. The editor notices when the game has saved the file and offers to load the new version.
-- **Game pictures.** The desktop version shows items, rooms and dweller looks from the game installed on the user's computer. The editor itself ships no pictures.
-- **Privacy.** The desktop version never goes online. The website never receives the save file and sets no cookies.
-- **Russian and English** interface. Game object names match the official Russian localization.
+- **Undo and redo for every edit,** bulk edits included, an edit history and a list of all changes before writing.
+- **Values within the game's limits.** Limits come from the game data, so normal mode cannot write what the game would reject. Expert mode opens every key of the file and the JSON tree.
+- **Pictures and looks from your own game.** Items, rooms, themes and a full-height dweller drawn as in the game. Item cards with description, damage, bonuses, crafting and selling price. The editor contains no game pictures: the desktop version reads them from the installed game, the website from a game file the user picks.
+- **Incidents:** start a fire or an attack in a chosen room, set its strength, end it, pause random incidents.
+- **Quests and objectives:** replace, complete, change difficulty, forget finished quests. Achievements with progress.
+- **Children and families:** future children (rarity, twins, colours), pregnancy, partners, ancestors.
+- **Moving a dweller from another save;** legendary dwellers and pets from the game's journal.
+- **Wasteland:** team loot, themes, stimpaks, return time, decoded team journal.
+- **Desktop version:** notices when the game has saved the file and offers to load it, recovers edits after a crash, makes backups, never goes online.
+- **Names as in the game.** Russian and English interface, item names from the official Russian localization.
 - **Open source** under GPL-3.0.
 
 Build from source: `cargo run --release -p shelter-save-studio`.
