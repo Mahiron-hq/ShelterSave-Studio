@@ -1,0 +1,24 @@
+{
+  "name": "shelter-save-studio-web",
+  "private": true,
+  "version": "1.0.0",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "wasm": "node scripts/wasm.mjs",
+    "dev": "vite",
+    "build": "node scripts/wasm.mjs && vite build && node scripts/pages.mjs && node scripts/compress.mjs",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@ui-sdk/core": "0.1.0-beta.10",
+    "@ui-sdk/svelte": "0.1.0-beta.10",
+    "lucide-static": "0.468.0",
+    "playwright": "1.65.1",
+    "svelte": "5.58.0",
+    "svelte-check": "4.7.8",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}
