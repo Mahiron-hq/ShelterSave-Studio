@@ -1,0 +1,43 @@
+[Unit]
+Description=ShelterSave-Studio watchdog and Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shelter-site
+Group=shelter-site
+ExecStart=/usr/local/bin/shelter-site watch --config /etc/shelter-site/config.toml
+Restart=always
+RestartSec=10
+StateDirectory=shelter-site
+StateDirectoryMode=0750
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/shelter-site
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+MemoryMax=48M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

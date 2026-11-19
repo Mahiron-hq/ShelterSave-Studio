@@ -1,0 +1,58 @@
+# ShelterSave-Studio site configuration.
+# Copy to /etc/shelter-site/config.toml, owner root:shelter-site, mode 640.
+# Every value below is the default unless marked "required".
+
+# Public address of the site (no trailing slash). Used for HTTPS headers,
+# the referrer filter and the watchdog's public check.
+site_url = "https://shelter.mahiron.online"
+
+# Where the site listens. Must be a local (loopback) address: the reverse
+# proxy (nginx) forwards requests here.
+listen = "127.0.0.1:8080"
+
+# Local address for the watchdog and the `stats` command. Never expose it.
+admin_listen = "127.0.0.1:8081"
+
+# Folder for the statistics database (stats.redb), the watchdog state
+# (watch.json) and the outage journal (incidents.log).
+data_dir = "/var/lib/shelter-site"
+
+# Proxies whose X-Real-IP / X-Forwarded-For headers are trusted. The visitor
+# address is used only in memory: for the daily hash and rate limiting.
+trusted_proxies = ["127.0.0.1", "::1"]
+
+[limits]
+# Statistics events accepted from one address per minute.
+hits_per_minute = 60
+# Statistics events accepted from everyone per minute.
+hits_per_minute_total = 6000
+
+[watch]
+# systemd unit of the site; "" skips this check.
+service = "shelter-site.service"
+# Seconds between checks.
+interval_secs = 60
+# Answer slower than this (milliseconds) counts as a problem.
+slow_ms = 3000
+# Share of server errors (5xx) over 5 minutes that counts as a problem.
+error_share = 0.05
+# Fewer requests than this in 5 minutes are too few to judge the error share.
+error_min_requests = 20
+# Free disk space below this percentage is a problem.
+disk_free_percent = 10.0
+# Disk to watch.
+disk_path = "/var/lib/shelter-site"
+# Warn when the public certificate expires in fewer days than this.
+cert_warn_days = 14
+# Failed checks in a row before an alert (filters short glitches).
+confirm_checks = 2
+# Shortest time between two alerts about the same ongoing problem.
+repeat_minutes = 60
+
+[telegram]
+# Required for alerts and commands: token from @BotFather. Keep this file
+# readable only by root and the service.
+token = ""
+# Required: your numeric Telegram user id. The bot answers only this user,
+# in a private chat, and ignores everyone else.
+admin_id = 0
