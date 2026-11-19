@@ -30,18 +30,6 @@ use crate::icons;
 use crate::style;
 use crate::widgets::{self, Opts};
 
-/// Resources a player sees in the game; the rest are counters and reward
-/// slots shown only in expert mode.
-const PLAYER_RESOURCES: [&str; 7] = [
-    "Nuka",
-    "Food",
-    "Energy",
-    "Water",
-    "StimPack",
-    "RadAway",
-    "NukaColaQuantum",
-];
-
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     section_title(ui, icons::HOUSE, &app.t("nav.vault"), "");
     ui.horizontal_wrapped(|ui| {
@@ -143,7 +131,7 @@ fn resources(app: &mut App, ui: &mut egui::Ui) {
             });
             let expert = app.expert();
             for key in RESOURCE_KEYS {
-                if !expert && !PLAYER_RESOURCES.contains(&key) {
+                if !expert && !vault::PLAYER_RESOURCES.contains(&key) {
                     continue;
                 }
                 let mut path = p(base);
@@ -863,60 +851,20 @@ fn add_item_bar(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Names a room type has at its levels, without repeats.
 fn level_names(app: &App, kind: &str) -> Vec<String> {
-    let levels = catalog().room(kind).map_or(1, |r| r.name.len().max(1)) as i64;
-    let mut out: Vec<String> = Vec::new();
-    for l in 1..=levels {
-        let n = kind_name(app, kind, l);
-        if n != kind && !out.contains(&n) {
-            out.push(n);
-        }
-    }
-    if out.is_empty() {
-        out.push(kind_name(app, kind, 1));
-    }
-    out
+    app.tx().level_names(kind)
 }
 
 fn kind_name(app: &App, kind: &str, level: i64) -> String {
-    if kind == "FakeWasteland" {
-        return app.t("map.wasteland");
-    }
-    let level = level.clamp(1, 3) as usize;
-    match catalog().room(kind) {
-        Some(info) => {
-            let n = info.name.get(level - 1).or_else(|| info.name.first());
-            n.map_or(kind.to_string(), |n| {
-                if app.lang == shelter_core::i18n::Lang::Ru {
-                    n.get(true).to_string()
-                } else {
-                    n.en.clone()
-                }
-            })
-        }
-        None => kind.to_string(),
-    }
+    app.tx().kind_name(kind, level)
 }
 
-/// Room name with its floor and cell, for lists.
 pub fn room_title(app: &App, r: &Value) -> String {
-    format!(
-        "{}  ·  {}",
-        room_name(app, r),
-        app.tf(
-            "room.position",
-            &[
-                ("row", vault::int(r, &["row"]).unwrap_or(0).to_string()),
-                ("col", vault::int(r, &["col"]).unwrap_or(0).to_string()),
-            ],
-        )
-    )
+    app.tx().room_title(r)
 }
 
 fn room_name(app: &App, r: &Value) -> String {
-    let kind = vault::text(r, &["type"]).unwrap_or_default();
-    kind_name(app, &kind, vault::int(r, &["level"]).unwrap_or(1))
+    app.tx().room_name(r)
 }
 
 /// Room being placed from the map: the clicked cell and the chosen room.
@@ -964,27 +912,8 @@ fn spot(
     }
 }
 
-/// Start column for a new room so that it covers the clicked cell, preferring
-/// a spot that passes every check.
 fn add_col(root: &Value, add: &MapAdd) -> i64 {
-    if add.rock {
-        return [add.at, add.at - 1]
-            .into_iter()
-            .find(|c| map::fits(root, add.row, *c, 2, None).is_ok())
-            .unwrap_or(add.at);
-    }
-    let w = map::width_of(&add.kind, add.merge);
-    let starts: Vec<i64> = (0..w).map(|off| add.at - off).collect();
-    starts
-        .iter()
-        .find(|c| map::check_spot(root, &add.kind, add.row, **c, add.merge, None).is_ok())
-        .or_else(|| {
-            starts
-                .iter()
-                .find(|c| map::fits(root, add.row, **c, w, None).is_ok())
-        })
-        .copied()
-        .unwrap_or(add.at)
+    map::add_col(root, &add.kind, add.row, add.at, add.merge, add.rock)
 }
 
 fn buildable(app: &App, root: &Value) -> Vec<(String, String)> {
@@ -1009,21 +938,12 @@ fn buildable(app: &App, root: &Value) -> Vec<(String, String)> {
     out
 }
 
-/// Sizes the game has for a room type.
 fn merges(kind: &str) -> Vec<i64> {
-    match catalog().room(kind) {
-        _ if kind == "Elevator" => vec![1],
-        Some(r) if !r.merges().is_empty() => r.merges(),
-        _ => (1..=shelter_core::rules::max_merge(kind)).collect(),
-    }
+    map::merges(kind)
 }
 
 fn max_level(kind: &str, merge: i64) -> i64 {
-    catalog()
-        .room(kind)
-        .map_or(catalog().limits.room_level_max, |r| {
-            r.max_level(merge).max(1)
-        })
+    map::max_level(kind, merge)
 }
 
 fn map_view(app: &mut App, ui: &mut egui::Ui, root: &Value) {
@@ -1663,17 +1583,8 @@ fn class_color(c: &style::Colors, class: &str) -> egui::Color32 {
     }
 }
 
-/// Resources a production room makes and keeps until they are collected.
 fn room_product(kind: &str) -> &'static [&'static str] {
-    match kind {
-        "Cafeteria" | "Hydroponic" => &["Food"],
-        "Geothermal" | "Energy2" => &["Energy"],
-        "WaterPlant" | "Water2" => &["Water"],
-        "MedBay" => &["StimPack"],
-        "ScienceLab" => &["RadAway"],
-        "NukaCola" => &["Food", "Water"],
-        _ => &[],
-    }
+    map::room_product(kind)
 }
 
 fn room_editor(app: &mut App, ui: &mut egui::Ui, i: usize) {
@@ -2370,22 +2281,10 @@ fn room_timers(app: &mut App, ui: &mut egui::Ui, r: &Value) {
 /// nearest free spot that passes every check.
 fn start_copy(app: &mut App, root: &Value, r: &Value) {
     let Some(me) = map::placed(r) else { return };
-    let (rows, cols) = map::grid_size();
-    let width = map::width_of(&me.kind, me.merge);
-    let nearest = |ok: &dyn Fn(i64, i64) -> bool| {
-        (0..rows)
-            .flat_map(|row| (0..cols).map(move |col| (row, col)))
-            .filter(|(row, col)| ok(*row, *col))
-            .min_by_key(|(row, col)| ((row - me.row).abs(), (col - me.col).abs()))
-    };
-    let best =
-        nearest(&|row, col| map::check_spot(root, &me.kind, row, col, me.merge, None).is_ok());
-    if best.is_none() {
+    let ((row, col), ok) = map::copy_spot(root, &me);
+    if !ok {
         app.toast(app.t("map.copyNoSpot"), false);
     }
-    let (row, col) = best
-        .or_else(|| nearest(&|row, col| map::fits(root, row, col, width, None).is_ok()))
-        .unwrap_or((me.row, me.col));
     app.map_add = Some(MapAdd {
         row,
         at: col,
@@ -2461,61 +2360,12 @@ fn rocks(app: &mut App, ui: &mut egui::Ui, root: &Value) {
     });
 }
 
-/// Room types that can wear a theme, in the order of the game's theme window.
-const THEME_ROOMS: [&str; 5] = [
-    "LivingQuarters",
-    "Cafeteria",
-    "NukaCola",
-    "WeaponFactory",
-    "FakeWasteland",
-];
-
-/// Holiday themes the game turns on by date: (theme name in the save, journal id).
-const HOLIDAYS: [(&str, &str); 3] = [
-    ("Xmas", "Cafeteria_Xmas"),
-    ("Halloween", "Cafeteria_Halloween"),
-    ("ThanksGiving", "Cafeteria_ThanksGiving"),
-];
-
-/// Theme of the room type at the start of `.room` in `specialTheme.themeByRoomType`, if any.
-fn applied_theme(root: &Value, room: &str) -> Option<String> {
-    root.at(&p(&["specialTheme", "themeByRoomType", room]))
-        .and_then(Value::as_text)
-}
-
-/// Game picture key of the standard look or of a theme for a room type.
-fn theme_picture(room: &str, theme: Option<&str>) -> (String, String) {
-    if room == "FakeWasteland" {
-        return ("Exterior".into(), theme.unwrap_or("None").to_string());
-    }
-    let level = theme
-        .and_then(|t| {
-            HOLIDAYS
-                .iter()
-                .position(|(k, _)| *k == t)
-                .map(|i| i as i64 + 1)
-                .or_else(|| {
-                    catalog()
-                        .themes
-                        .iter()
-                        .find(|x| x.room == room && x.theme == t)
-                        .map(|x| x.theme_type)
-                })
-        })
-        .map_or(3, |tt| 3 + tt);
-    ("Room".into(), format!("{room}:{level}:3"))
-}
+use shelter_core::pictures::{applied_theme, theme_picture, HOLIDAYS, THEME_ROOMS};
 
 /// Room picture from the game, as wide as the space allows.
 fn room_picture(app: &mut App, ui: &mut egui::Ui, kind: &str, id: &str, max_w: f32) -> bool {
     let tex = app.art.icon(ui.ctx(), kind, id).or_else(|| {
-        // The game falls back to the ultracite workshop picture and to the plain level 3 room.
-        let (room, _) = id.split_once(':')?;
-        let alt = if room == "WeaponFactory" {
-            "UltraciteWeaponFactory:3:3".to_string()
-        } else {
-            format!("{room}:3:3")
-        };
+        let alt = shelter_core::pictures::room_picture_fallback(id)?;
         app.art.icon(ui.ctx(), kind, &alt)
     });
     let Some(t) = tex else {
@@ -2533,19 +2383,8 @@ fn room_picture(app: &mut App, ui: &mut egui::Ui, kind: &str, id: &str, max_w: f
     true
 }
 
-/// Picture the game shows for a built room (its zoomed-out look).
 fn room_picture_id(root: &Value, r: &Value) -> (String, String) {
-    let kind = vault::text(r, &["type"]).unwrap_or_default();
-    let merge = vault::int(r, &["mergeLevel"]).unwrap_or(1);
-    let level = vault::int(r, &["level"]).unwrap_or(1);
-    let theme = applied_theme(root, &kind);
-    match kind.as_str() {
-        "FakeWasteland" => theme_picture(&kind, theme.as_deref()),
-        "Entrance" => ("Room".into(), format!("Entrance:{level}:1")),
-        "Elevator" => ("Room".into(), "Elevator:1:1".into()),
-        _ if merge == 3 && level == 3 && theme.is_some() => theme_picture(&kind, theme.as_deref()),
-        _ => ("Room".into(), format!("{kind}:{level}:{merge}")),
-    }
+    shelter_core::pictures::room_picture(root, r)
 }
 
 /// Picture and pick list of the theme for one room type.

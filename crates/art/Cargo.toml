@@ -1,0 +1,13 @@
+[package]
+name = "shelter-art"
+description = "Reads game pictures from the user's own Fallout Shelter files and draws dwellers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+shelter-core = { path = "../core" }

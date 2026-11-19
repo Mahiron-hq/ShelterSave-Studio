@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 shelter-core = { path = "../../crates/core" }
+shelter-art = { path = "../../crates/art" }
 eframe = { version = "0.37", default-features = false, features = ["glow", "accesskit", "clipboard", "links", "wayland", "x11"] }
 rfd = "0.18"
 sys-locale = "0.3"

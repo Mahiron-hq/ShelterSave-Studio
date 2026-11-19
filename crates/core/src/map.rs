@@ -256,6 +256,80 @@ pub fn occupancy(root: &Value) -> HashMap<(i64, i64), i64> {
     out
 }
 
+/// Start column for a new room (or a pair of rocks) so that it covers the
+/// clicked cell `at`, preferring a spot that passes every check.
+pub fn add_col(root: &Value, kind: &str, row: i64, at: i64, merge: i64, rock: bool) -> i64 {
+    if rock {
+        return [at, at - 1]
+            .into_iter()
+            .find(|c| fits(root, row, *c, 2, None).is_ok())
+            .unwrap_or(at);
+    }
+    let w = width_of(kind, merge);
+    let starts: Vec<i64> = (0..w).map(|off| at - off).collect();
+    starts
+        .iter()
+        .find(|c| check_spot(root, kind, row, **c, merge, None).is_ok())
+        .or_else(|| {
+            starts
+                .iter()
+                .find(|c| fits(root, row, **c, w, None).is_ok())
+        })
+        .copied()
+        .unwrap_or(at)
+}
+
+/// Sizes the game has for a room type.
+pub fn merges(kind: &str) -> Vec<i64> {
+    match catalog().room(kind) {
+        _ if kind == "Elevator" => vec![1],
+        Some(r) if !r.merges().is_empty() => r.merges(),
+        _ => (1..=crate::rules::max_merge(kind)).collect(),
+    }
+}
+
+/// Highest upgrade level of a room type at a size.
+pub fn max_level(kind: &str, merge: i64) -> i64 {
+    catalog()
+        .room(kind)
+        .map_or(catalog().limits.room_level_max, |r| {
+            r.max_level(merge).max(1)
+        })
+}
+
+/// Resources a production room makes and keeps until they are collected.
+pub fn room_product(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "Cafeteria" | "Hydroponic" => &["Food"],
+        "Geothermal" | "Energy2" => &["Energy"],
+        "WaterPlant" | "Water2" => &["Water"],
+        "MedBay" => &["StimPack"],
+        "ScienceLab" => &["RadAway"],
+        "NukaCola" => &["Food", "Water"],
+        _ => &[],
+    }
+}
+
+/// Nearest place for a copy of a room: the closest spot that passes every
+/// check (true), else the closest free one (false), else the room's own spot.
+pub fn copy_spot(root: &Value, me: &Placed) -> ((i64, i64), bool) {
+    let (rows, cols) = grid_size();
+    let width = width_of(&me.kind, me.merge);
+    let nearest = |ok: &dyn Fn(i64, i64) -> bool| {
+        (0..rows)
+            .flat_map(|row| (0..cols).map(move |col| (row, col)))
+            .filter(|(row, col)| ok(*row, *col))
+            .min_by_key(|(row, col)| ((row - me.row).abs(), (col - me.col).abs()))
+    };
+    if let Some(best) =
+        nearest(&|row, col| check_spot(root, &me.kind, row, col, me.merge, None).is_ok())
+    {
+        return (best, true);
+    }
+    let loose = nearest(&|row, col| fits(root, row, col, width, None).is_ok());
+    (loose.unwrap_or((me.row, me.col)), false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

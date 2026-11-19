@@ -148,65 +148,12 @@ fn join(base: &[Seg], key: &str) -> Vec<Seg> {
     out
 }
 
-fn quest_name(app: &App, id: &str) -> String {
-    let ru = app.lang == Lang::Ru;
-    catalog()
-        .quests
-        .iter()
-        .find(|q| q.id == id)
-        .map_or_else(|| id.to_string(), |q| q.name.get(ru).to_string())
-}
-
-/// Difficulty number from ids such as `Daily_05_Diff_30_B`.
-fn quest_difficulty(id: &str) -> Option<String> {
-    let rest = id.split("_Diff_").nth(1)?;
-    let n: String = rest
-        .chars()
-        .take_while(char::is_ascii_alphanumeric)
-        .collect();
-    (!n.is_empty()).then_some(n)
-}
-
 fn quest_line(app: &App, id: &str) -> String {
-    match quest_difficulty(id) {
-        Some(d) => {
-            let key = format!("o.diffWord.{d}");
-            let d = match app.t(&key) {
-                t if t == key => d,
-                t => t,
-            };
-            format!(
-                "{}  ·  {}",
-                quest_name(app, id),
-                app.tf("o.difficulty", &[("n", d)])
-            )
-        }
-        None => quest_name(app, id),
-    }
+    app.tx().quest_line(id)
 }
 
-/// Dates the game writes as `M/d/yyyy h:mm:ss AM` or `MM/dd/yyyy HH:mm:ss`.
 fn game_date(app: &App, s: &str) -> String {
-    let parse = || -> Option<(u32, u32, u32, u32, u32)> {
-        let mut it = s.split_whitespace();
-        let mut d = it.next()?.split('/').map(|x| x.parse::<u32>().ok());
-        let (mo, day, y) = (d.next()??, d.next()??, d.next()??);
-        let mut t = it.next()?.split(':').map(|x| x.parse::<u32>().ok());
-        let (mut h, mi) = (t.next()??, t.next()??);
-        match it.next() {
-            Some("PM") if h < 12 => h += 12,
-            Some("AM") if h == 12 => h = 0,
-            _ => {}
-        }
-        Some((y, mo, day, h, mi))
-    };
-    match parse() {
-        Some((y, mo, d, h, mi)) if app.lang == Lang::Ru => {
-            format!("{d:02}.{mo:02}.{y} {h:02}:{mi:02}")
-        }
-        Some((y, mo, d, h, mi)) => format!("{y}-{mo:02}-{d:02} {h:02}:{mi:02}"),
-        None => s.to_string(),
-    }
+    app.tx().game_date(s)
 }
 
 fn dweller_name_any(root: &Value, id: i64) -> String {
@@ -222,13 +169,7 @@ fn dweller_name_any(root: &Value, id: i64) -> String {
 }
 
 fn duration(app: &App, secs: f64) -> String {
-    let total = secs.max(0.0) as i64;
-    let (h, m) = (total / 3600, (total % 3600) / 60);
-    if h > 0 {
-        app.tf("o.hm", &[("h", h.to_string()), ("m", m.to_string())])
-    } else {
-        app.tf("o.m", &[("m", m.to_string())])
-    }
+    app.tx().duration(secs)
 }
 
 fn quests(app: &mut App, ui: &mut egui::Ui) {
@@ -806,6 +747,18 @@ fn team_details(app: &mut App, ui: &mut egui::Ui, i: usize, t: &Value, r: &Value
                     .min_scrolled_height(200.0)
                     .max_height(320.0)
                     .show(ui, |ui| {
+                        if !app.art.texts() {
+                            let note = match app.art.status() {
+                                crate::art::Status::Loading | crate::art::Status::Ready => {
+                                    app.t("art.loading")
+                                }
+                                crate::art::Status::NoGame => app.t("o.logNoGame"),
+                                _ => app.t("art.mismatch"),
+                            };
+                            ui.add(
+                                egui::Label::new(RichText::new(note).small().color(c.muted)).wrap(),
+                            );
+                        }
                         for code in logs.iter().rev().filter_map(Value::as_text) {
                             let (time, text) = log_line(app, &code);
                             ui.horizontal_wrapped(|ui| {
@@ -820,96 +773,8 @@ fn team_details(app: &mut App, ui: &mut egui::Ui, i: usize, t: &Value, r: &Value
     }
 }
 
-/// One wasteland journal line as the game shows it: "HHMM@part@part", each
-/// part "text#param#param"; a leading letter says how to read the piece.
 fn log_line(app: &App, code: &str) -> (String, String) {
-    let ru = app.lang == shelter_core::i18n::Lang::Ru;
-    let items = app.settings.russian_item_names;
-    let mut parts = code.split('@').filter(|s| !s.is_empty());
-    let time = parts
-        .next()
-        .filter(|t| t.len() > 2)
-        .map(|t| format!("{}:{}", &t[..t.len() - 2], &t[t.len() - 2..]))
-        .unwrap_or_default();
-    let piece = |s: &str| -> String {
-        let (Some(kind), rest) = (s.chars().next(), s.get(1..).unwrap_or("")) else {
-            return String::new();
-        };
-        match kind {
-            'l' => catalog()
-                .wasteland_texts
-                .get(rest)
-                .map_or_else(|| rest.to_string(), |n| n.get(ru).to_string()),
-            'f' => catalog()
-                .wasteland_keys
-                .get(rest)
-                .map_or_else(|| rest.to_string(), |n| n.get(ru).to_string()),
-            'r' => rest
-                .split('&')
-                .filter(|x| !x.is_empty())
-                .map(|x| {
-                    let (n, amount) = x.split_at(1);
-                    let key = ["Nuka", "Food", "Energy", "Water", "StimPack", "RadAway"]
-                        .get(n.parse::<usize>().unwrap_or(99))
-                        .copied()
-                        .unwrap_or("");
-                    let name = app.t(&format!("res.{key}"));
-                    format!("{amount} {name}")
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
-            'i' => rest
-                .split('&')
-                .filter(|x| !x.is_empty())
-                .map(|x| {
-                    let (k, id) = x.split_at(1);
-                    let by_code = |kind: ItemKind| {
-                        catalog()
-                            .items(kind)
-                            .find(|it| item_code(kind, it.id).as_deref() == Some(id))
-                            .map(|it| it.name.get(items).to_string())
-                    };
-                    match k {
-                        "w" => by_code(ItemKind::Weapon),
-                        "o" => by_code(ItemKind::Outfit),
-                        "p" => by_code(ItemKind::Pet),
-                        "j" => by_code(ItemKind::Junk),
-                        "r" => Some(app.t("o.logRecipe")),
-                        _ => None,
-                    }
-                    .unwrap_or_else(|| id.to_string())
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
-            _ => rest.to_string(),
-        }
-    };
-    let text = parts
-        .map(|part| {
-            let mut bits = part.split('#').filter(|s| !s.is_empty());
-            let mut line = bits.next().map(piece).unwrap_or_default();
-            for (n, arg) in bits.enumerate() {
-                line = line.replace(&format!("{{{n}}}"), &piece(arg));
-            }
-            line
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    (time, text)
-}
-
-fn item_code(kind: ItemKind, id: &str) -> Option<String> {
-    let c = catalog();
-    match kind {
-        ItemKind::Weapon => c.weapon(id).map(|w| w.code.clone()),
-        ItemKind::Outfit => c.outfit(id).map(|o| o.code.clone()),
-        ItemKind::Pet => c.pet(id).map(|p| p.code.clone()),
-        ItemKind::Junk => c
-            .junk
-            .iter()
-            .find(|j| j.id == id)
-            .and_then(|j| j.code.clone()),
-    }
+    app.tx().log_line(code)
 }
 
 /// Incident block of the room editor: what is going on in this room, or a
@@ -1033,11 +898,7 @@ pub fn room_incident(app: &mut App, ui: &mut egui::Ui, root: &Value, room: &Valu
 }
 
 fn incident_name(app: &App, mode: i64) -> String {
-    let key = format!("inc.mode.{mode}");
-    match app.t(&key) {
-        s if s == key => mode.to_string(),
-        s => s,
-    }
+    app.tx().incident_name(mode)
 }
 
 /// Current incident, its strength, starting a new one and the random check timer.
@@ -1483,79 +1344,16 @@ fn team_loot(app: &mut App, ui: &mut egui::Ui, team: usize, t: &Value) {
     }
 }
 
-/// Values for `{1}` and later in an objective text; parts the game picks on
-/// load show a placeholder.
 fn objective_params(app: &App, o: &Objective, req: Option<&Value>, goal: i64) -> Vec<String> {
-    let ru = app.lang == Lang::Ru;
-    let later = app.t("o.gamePicks");
-    let saved = |key: &str| {
-        req.and_then(|r| r.get(key))
-            .and_then(Value::as_text)
-            .filter(|s| !s.is_empty() && s != "None")
-    };
-    let Some(g) = &o.goal else {
-        return Vec::new();
-    };
-    g.extra
-        .iter()
-        .map(|e| {
-            if let Some(t) = &e.text {
-                return t.get(ru).to_string();
-            }
-            if let Some(enemy) = &e.enemy {
-                let kind = enemy.clone().or_else(|| saved("enemyTypeTarget"));
-                return kind
-                    .and_then(|k| {
-                        catalog()
-                            .names
-                            .enemies
-                            .get(&k)
-                            .map(|n| (k.clone(), n.clone()))
-                    })
-                    .map_or(later.clone(), |(_, n)| {
-                        if goal > 1 { n.many } else { n.one }.get(ru).to_string()
-                    });
-            }
-            if let Some(stat) = &e.stat {
-                let s = stat.clone().or_else(|| saved("specificSpecialStat"));
-                return s
-                    .and_then(|s| catalog().names.special.get(&s))
-                    .map_or(later.clone(), |n| n.get(ru).to_string());
-            }
-            if e.weapon {
-                return req
-                    .and_then(|r| r.get("targetWeaponIDs"))
-                    .and_then(Value::as_array)
-                    .and_then(|a| a.first())
-                    .and_then(Value::as_text)
-                    .and_then(|id| {
-                        catalog()
-                            .item(ItemKind::Weapon, &id)
-                            .map(|i| i.name.get(ru).to_string())
-                    })
-                    .unwrap_or_else(|| later.clone());
-            }
-            String::new()
-        })
-        .collect()
+    app.tx().objective_params(o, req, goal)
 }
 
 fn objective_text(app: &App, id: &str, level: i64, req: Option<&Value>) -> String {
-    let ru = app.lang == Lang::Ru;
-    match catalog().objective(id) {
-        Some(o) => {
-            let params = objective_params(app, o, req, o.goal_value(level));
-            o.text(ru, level, &params)
-        }
-        None => id.to_string(),
-    }
+    app.tx().objective_text(id, level, req)
 }
 
 fn reward_text(app: &App, o: &Objective, level: i64) -> String {
-    app.tf(
-        &format!("o.reward.{}", o.reward),
-        &[("n", o.reward_value(level).to_string())],
-    )
+    app.tx().reward_text(o, level)
 }
 
 /// Timer row for a game task: minutes until it fires, editable.

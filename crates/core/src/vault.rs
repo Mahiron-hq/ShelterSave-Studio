@@ -61,6 +61,18 @@ pub const RESOURCE_KEYS: [&str; 15] = [
     "PokerChip",
 ];
 
+/// Resources a player sees in the game; the rest are counters and reward
+/// slots shown only in expert mode.
+pub const PLAYER_RESOURCES: [&str; 7] = [
+    "Nuka",
+    "Food",
+    "Energy",
+    "Water",
+    "StimPack",
+    "RadAway",
+    "NukaColaQuantum",
+];
+
 pub const SPECIAL_LETTERS: [&str; 7] = ["S", "P", "E", "C", "I", "A", "L"];
 
 pub fn arr<'a>(root: &'a Value, path: &[&str]) -> &'a [Value] {

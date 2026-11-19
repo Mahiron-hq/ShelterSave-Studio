@@ -17,7 +17,7 @@
 //! Game reference data (`data/catalog.json`), shared by both editions.
 
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -465,12 +465,9 @@ pub struct Catalog {
     pub level_experience: Vec<i64>,
     pub limits: Limits,
     pub names: UiNames,
-    /// Wasteland journal phrases by the short id the save stores (`{0}` = parameter).
+    /// Where the wasteland journal phrases lie in the game file.
     #[serde(default)]
-    pub wasteland_texts: BTreeMap<String, Names>,
-    /// Journal lines stored by their localization key.
-    #[serde(default)]
-    pub wasteland_keys: BTreeMap<String, Names>,
+    pub wasteland_texts: Option<WastelandTexts>,
     /// Hair, beard and face mask names per gender ("male", "female"), in game order.
     #[serde(default)]
     pub looks: BTreeMap<String, Looks>,
@@ -691,6 +688,100 @@ pub struct ItemInfo<'a> {
     pub id: &'a str,
     pub rarity: &'a str,
     pub name: &'a Names,
+}
+
+/// Positions of the wasteland journal phrases in the game file; the phrases
+/// themselves are read from the player's game.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WastelandTexts {
+    /// Bundle node that holds the phrases.
+    pub node: String,
+    /// CRC-32 of all phrases in order (texts, then keys; English then Russian).
+    pub crc: u32,
+    /// By the short id the save stores (`{0}` = parameter): English offset,
+    /// length, Russian offset, length.
+    pub texts: BTreeMap<String, [u64; 4]>,
+    /// Lines stored by their localization key.
+    pub keys: BTreeMap<String, [u64; 4]>,
+}
+
+/// Wasteland journal phrases read from the game.
+#[derive(Debug, Default)]
+pub struct GameTexts {
+    pub texts: BTreeMap<String, Names>,
+    pub keys: BTreeMap<String, Names>,
+}
+
+impl WastelandTexts {
+    /// Offset and size of the part of the node that holds every phrase.
+    pub fn span(&self) -> Option<(u64, u64)> {
+        let mut lo = u64::MAX;
+        let mut hi = 0;
+        for r in self.texts.values().chain(self.keys.values()) {
+            lo = lo.min(r[0]).min(r[2]);
+            hi = hi.max(r[0] + r[1]).max(r[2] + r[3]);
+        }
+        (hi > lo).then(|| (lo, hi - lo))
+    }
+
+    /// Phrases cut from `data`, the node bytes starting at `start`; `None`
+    /// when they do not match this catalog.
+    pub fn read(&self, start: u64, data: &[u8]) -> Option<GameTexts> {
+        let mut crc = 0u32;
+        let mut cut = |off: u64, len: u64| -> Option<String> {
+            let from = usize::try_from(off.checked_sub(start)?).ok()?;
+            let to = from.checked_add(usize::try_from(len).ok()?)?;
+            let bytes = data.get(from..to)?;
+            crc = crc32_update(crc, bytes);
+            String::from_utf8(bytes.to_vec()).ok()
+        };
+        let mut out = GameTexts::default();
+        for (group, map) in [(&self.texts, &mut out.texts), (&self.keys, &mut out.keys)] {
+            for (key, r) in group {
+                let en = cut(r[0], r[1])?;
+                let ru = cut(r[2], r[3])?;
+                map.insert(
+                    key.clone(),
+                    Names {
+                        en: en.trim().to_string(),
+                        ru: ru.trim().to_string(),
+                        ru_official: true,
+                    },
+                );
+            }
+        }
+        (crc == self.crc).then_some(out)
+    }
+}
+
+fn crc32_update(crc: u32, data: &[u8]) -> u32 {
+    let mut c = !crc;
+    for &b in data {
+        c ^= u32::from(b);
+        for _ in 0..8 {
+            c = if c & 1 != 0 {
+                (c >> 1) ^ 0xEDB8_8320
+            } else {
+                c >> 1
+            };
+        }
+    }
+    !c
+}
+
+static GAME_TEXTS: RwLock<Option<Arc<GameTexts>>> = RwLock::new(None);
+
+/// Keeps the phrases read from the game for every later text.
+pub fn set_game_texts(texts: GameTexts) {
+    if let Ok(mut g) = GAME_TEXTS.write() {
+        *g = Some(Arc::new(texts));
+    }
+}
+
+/// Phrases read from the game, if any.
+pub fn game_texts() -> Option<Arc<GameTexts>> {
+    GAME_TEXTS.read().ok()?.clone()
 }
 
 pub fn catalog() -> &'static Catalog {

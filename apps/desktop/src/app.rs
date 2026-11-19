@@ -23,7 +23,7 @@ use shelter_core::actions::{Action, ActionError};
 use shelter_core::catalog::ItemKind;
 use shelter_core::document::{Document, SourceKind};
 use shelter_core::i18n::{self, Lang};
-use shelter_core::rules::{Mode, RuleError};
+use shelter_core::rules::Mode;
 
 use crate::files::{self, FoundSave, Stamp};
 use crate::icons;
@@ -342,92 +342,19 @@ impl App {
         });
     }
 
-    pub fn label_text(&self, label: &shelter_core::edit::Label) -> String {
-        let params: Vec<(&str, String)> = label
-            .params
-            .iter()
-            .map(|(k, v)| (k.as_str(), self.param_text(k, v)))
-            .collect();
-        self.tf(&label.key, &params)
+    pub fn tx(&self) -> shelter_core::text::Tx {
+        shelter_core::text::Tx::new(self.lang, self.settings.russian_item_names)
     }
 
-    /// Readable form of an id or path stored in a journal entry.
-    fn param_text(&self, key: &str, v: &str) -> String {
-        use shelter_core::catalog::catalog;
-        let ru = self.lang == shelter_core::i18n::Lang::Ru;
-        let cat = catalog();
-        match key {
-            "room" => cat
-                .room(v)
-                .and_then(|r| r.name.first())
-                .map_or_else(|| v.to_string(), |n| n.get(ru).to_string()),
-            "id" | "item" => ItemKind::ALL
-                .iter()
-                .find_map(|k| cat.item(*k, v))
-                .map(|i| i.name.get(ru).to_string())
-                .or_else(|| {
-                    cat.quests
-                        .iter()
-                        .find(|q| q.id == v)
-                        .map(|q| q.name.get(ru).to_string())
-                })
-                .or_else(|| {
-                    cat.objective(v)
-                        .map(|o| o.text(ru, 0, &["…".into(), "…".into()]))
-                })
-                .or_else(|| {
-                    cat.achievements
-                        .iter()
-                        .find(|a| !v.is_empty() && (a.objective_id == v || a.id == v))
-                        .map(|a| a.name.get(ru).to_string())
-                })
-                .unwrap_or_else(|| v.to_string()),
-            "key" => {
-                let k = format!("res.{v}");
-                match self.t(&k) {
-                    t if t == k => v.to_string(),
-                    t => t,
-                }
-            }
-            "path" | "field" => match (parse_path(v), &self.open) {
-                (Some(path), Some(open)) if !path.is_empty() => {
-                    crate::sec_save::path_title(self, open.doc.root(), &path)
-                }
-                _ => v.to_string(),
-            },
-            _ => v.to_string(),
-        }
+    pub fn label_text(&self, label: &shelter_core::edit::Label) -> String {
+        self.tx()
+            .label_text(label, self.open.as_ref().map(|o| o.doc.root()))
     }
 
     pub fn error_text(&self, e: &ActionError) -> String {
-        match e {
-            ActionError::Rule(RuleError::OutOfRange { min, max }) => self.tf(
-                "aerr.outOfRange",
-                &[("min", min.to_string()), ("max", max.to_string())],
-            ),
-            ActionError::Rule(RuleError::NotAllowed) => self.t("aerr.notAllowed"),
-            ActionError::Rule(RuleError::NotInCatalog) => self.t("aerr.notInCatalog"),
-            ActionError::Rule(RuleError::WrongType) => self.t("aerr.wrongType"),
-            ActionError::Rule(RuleError::ExpertOnly) => self.t("aerr.expertOnly"),
-            ActionError::Rule(RuleError::TooManyDwellers) => self.t("aerr.tooManyDwellers"),
-            ActionError::Rule(RuleError::RoomOverlap) => self.t("aerr.roomOverlap"),
-            ActionError::Rule(RuleError::RoomDisconnected) => self.t("aerr.roomDisconnected"),
-            ActionError::Rule(RuleError::RoomBusy) => self.t("aerr.roomBusy"),
-            ActionError::Rule(RuleError::RoomFixed) => self.t("aerr.roomFixed"),
-            ActionError::Rule(RuleError::RoomUnique) => self.t("aerr.roomUnique"),
-            ActionError::Rule(RuleError::RoomLocked) => self.t("aerr.roomLocked"),
-            ActionError::Rule(RuleError::RoomSize) => self.t("aerr.roomSize"),
-            ActionError::Rule(RuleError::OutfitGender) => self.t("aerr.outfitGender"),
-            ActionError::Rule(RuleError::IncidentActive) => self.t("aerr.incidentActive"),
-            ActionError::Rule(RuleError::InventoryFull) => self.t("aerr.inventoryFull"),
-            ActionError::Rule(RuleError::NotFound) => self.t("aerr.notFound"),
-            ActionError::BadJson(d) => self.tf("aerr.badJson", &[("detail", d.clone())]),
-            ActionError::Nothing => self.t("aerr.nothing"),
-            ActionError::Edit(d) => self.tf("aerr.edit", &[("detail", d.clone())]),
-        }
+        self.tx().error_text(e)
     }
 
-    /// Runs an action; mass actions get a toast with an undo button.
     pub fn act(&mut self, action: Action) -> bool {
         let mode = self.mode();
         let Some(open) = self.open.as_mut() else {
@@ -1470,30 +1397,6 @@ pub fn panel<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
             add(ui)
         })
         .inner
-}
-
-/// Reverse of `path_to_string`: `a.b[2].c`.
-fn parse_path(s: &str) -> Option<Vec<shelter_core::json::Seg>> {
-    use shelter_core::json::Seg;
-    let mut out = Vec::new();
-    for part in s.split('.') {
-        let (key, mut rest) = match part.find('[') {
-            Some(i) => (&part[..i], &part[i..]),
-            None => (part, ""),
-        };
-        if !key.is_empty() {
-            out.push(Seg::Key(key.into()));
-        }
-        while let Some(r) = rest.strip_prefix('[') {
-            let end = r.find(']')?;
-            out.push(Seg::Index(r[..end].parse().ok()?));
-            rest = &r[end + 1..];
-        }
-        if !rest.is_empty() {
-            return None;
-        }
-    }
-    Some(out)
 }
 
 impl App {

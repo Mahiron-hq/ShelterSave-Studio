@@ -205,56 +205,12 @@ fn summary(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Readable place of a value: the dweller or room it belongs to, then the
-/// field names, for change lists.
 pub fn path_title(app: &App, root: &shelter_core::json::Value, path: &[Seg]) -> String {
-    let key = |i: usize| match path.get(i) {
-        Some(Seg::Key(k)) => k.as_str(),
-        _ => "",
-    };
-    let mut parts: Vec<String> = Vec::new();
-    let mut start = 0;
-    match (key(0), key(1), path.get(2)) {
-        ("dwellers", "dwellers", Some(Seg::Index(i))) => {
-            if let Some(d) = vault::arr(root, &vault::DWELLERS).get(*i) {
-                parts.push(vault::dweller_name(d));
-            }
-            start = 3;
-        }
-        ("vault", "rooms", Some(Seg::Index(i))) => {
-            if let Some(r) = vault::arr(root, &vault::ROOMS).get(*i) {
-                parts.push(crate::sec_vault::room_title(app, r));
-            }
-            start = 3;
-        }
-        _ => {}
-    }
-    let mut prefix: Vec<Seg> = path[..start.min(path.len())].to_vec();
-    let mut fields = Vec::new();
-    for seg in &path[start.min(path.len())..] {
-        prefix.push(seg.clone());
-        if let Seg::Key(_) = seg {
-            fields.push(shelter_core::fields::describe(app.lang, &prefix).label);
-        }
-    }
-    if fields.len() > 3 {
-        fields.drain(..fields.len() - 3);
-    }
-    parts.extend(fields);
-    if parts.is_empty() {
-        path_to_string(path)
-    } else {
-        parts.join(" › ")
-    }
+    app.tx().path_title(root, path)
 }
 
 pub fn issue_text(app: &App, i: &Issue) -> String {
-    let params: Vec<(&str, String)> = i
-        .params
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.clone()))
-        .collect();
-    app.tf(&format!("integ.{}", i.code), &params)
+    app.tx().issue_text(i)
 }
 
 /// Opens the section that shows a path.

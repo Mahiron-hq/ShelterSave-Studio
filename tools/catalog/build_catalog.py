@@ -13,6 +13,7 @@ import argparse
 import json
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 import UnityPy
@@ -182,10 +183,12 @@ def load_localization(game):
         if obj.type.name == "MonoBehaviour":
             mb = obj
     r = Reader(mb.get_raw_data())
+    spans = {}
 
     def s():
         n = r.un("i")
         v = r.b[r.p:r.p + n].decode("utf-8")
+        spans[id(v)] = (mb.byte_start + r.p, n)
         r.p += n
         r.align()
         return v
@@ -218,6 +221,25 @@ def load_localization(game):
         if not e:
             return None
         return {"en": e, "ru": rr or e, "ruOfficial": bool(rr)}
+
+    # Where the English and Russian strings of a term lie in the game file.
+    def ref(key):
+        if key not in terms:
+            return None
+        langs, touch = terms[key]
+
+        def raw(i):
+            for v in (langs[i] if i < len(langs) else "", touch[i] if i < len(touch) else ""):
+                if v.strip():
+                    return v
+            return None
+        e, rr = raw(en), raw(ru)
+        if e is None:
+            return None
+        rr = rr if rr is not None else e
+        return [*spans[id(e)], *spans[id(rr)]], (e + rr).encode("utf-8")
+    get.ref = ref
+    get.node = mb.assets_file.name
     return get
 
 
@@ -582,8 +604,19 @@ def build(game_dir):
 
     # Phrases of the wasteland team journal, by the short id the save stores.
     wm = g.read(g.of_class("WastelandMessageManager", prefer_shared=False)[0])
-    cat["wastelandTexts"] = {e["Key"]: n for e in wm["m_textList"] if (n := loc(e["Value"]))}
-    cat["wastelandKeys"] = {k: n for k in wm["m_aditionalKeys"] if (n := loc(k))}
+    # Only positions are kept: the phrases are read from the player's game.
+    crc = 0
+    texts = {}
+    for group, pairs in (("texts", sorted((e["Key"], e["Value"]) for e in wm["m_textList"])),
+                         ("keys", sorted((k, k) for k in wm["m_aditionalKeys"]))):
+        texts[group] = {}
+        for key, term in pairs:
+            found = loc.ref(term)
+            if found is None or key in texts[group]:
+                continue
+            texts[group][key] = found[0]
+            crc = zlib.crc32(found[1], crc)
+    cat["wastelandTexts"] = {"node": loc.node, "crc": crc, "texts": texts["texts"], "keys": texts["keys"]}
     return cat
 
 
