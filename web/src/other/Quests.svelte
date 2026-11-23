@@ -163,9 +163,21 @@
 <style>
   .info {
     display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 4px 12px;
+    grid-template-columns: calc(268px + var(--s-md)) 1fr;
+    gap: 4px 0;
     margin: 0 0 var(--s-sm);
+  }
+  dt {
+    padding-inline-start: 8px;
+  }
+  @media (max-width: 520px) {
+    .info {
+      grid-template-columns: max-content 1fr;
+      gap: 4px 12px;
+    }
+    dt {
+      padding-inline-start: 0;
+    }
   }
   dt {
     color: var(--muted);

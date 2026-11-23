@@ -129,13 +129,14 @@
     <ul class="list">
       {#each gs as g (g.kind + g.id + g.recipe)}
         <li>
-          {#if ["Weapon", "Outfit", "Pet", "Junk"].includes(g.kind)}<ItemCard kind={g.kind as ItemKind} id={g.id} />{:else}{g.id}{/if}
+          <span>{#if ["Weapon", "Outfit", "Pet", "Junk"].includes(g.kind)}<ItemCard kind={g.kind as ItemKind} id={g.id} />{:else}{g.id}{/if}</span>
           <span class="muted small">{app.t(`it.kind.${g.kind}`)}{#if g.recipe}&nbsp;·&nbsp;{app.t("o.lootRecipe")}{/if}</span>
-          <span class="mono">× {g.idx.length}</span>
-          <button type="button" class="icon ghost" aria-label={app.t("o.lootRemoveOne")} title={app.t("o.lootRemoveOne")} onclick={() => app.act({ action: "removeTeamItems", team: i, indices: [g.idx[g.idx.length - 1]] })}><Icon name="x" /></button>
+          <span class="mono count">× {g.idx.length}</span>
+          <span class="acts"><button type="button" class="icon ghost" aria-label={app.t("o.lootRemoveOne")} title={app.t("o.lootRemoveOne")} onclick={() => app.act({ action: "removeTeamItems", team: i, indices: [g.idx[g.idx.length - 1]] })}><Icon name="x" /></button>
           {#if g.idx.length > 1}
             <button type="button" class="icon ghost" aria-label={app.t("o.lootRemoveAll")} title={app.t("o.lootRemoveAll")} onclick={() => app.act({ action: "removeTeamItems", team: i, indices: g.idx })}><Icon name="trash" /></button>
-          {/if}
+          {/if}</span
+          >
         </li>
       {/each}
     </ul>
@@ -151,19 +152,22 @@
     {#if Array.isArray(t.teamEquipment?.collectedThemes?.themeList)}
       {@const themes = t.teamEquipment.collectedThemes.themeList.filter((th: any) => typeof th?.id === "string")}
       <h4 title={app.t("o.lootThemesHelp")}>{app.t("o.lootThemes")}</h4>
+      <div class="list themes">
       {#each themes as th (th.id)}
-        <p class="row-wrap">
-          <ThemeCard id={th.id} />
-          <NumPick
+        <p>
+          <span><ThemeCard id={th.id} /></span>
+          <span class="count"><NumPick
             value={th.extraData?.partsCollectedCount ?? 0}
             label={app.t("theme.partsOf")}
             lo={0}
             hi={consts().themeParts}
             oncommit={(v) => app.act({ action: "setTeamThemeParts", team: i, id: th.id, parts: v })}
           />
-          <span class="muted">{app.t("theme.partsOf")}</span>
+          <span class="muted">{app.t("theme.partsOf")}</span></span
+          >
         </p>
       {/each}
+      </div>
       <Pick
         label={app.t("o.lootThemeAdd")}
         value={null}
@@ -216,11 +220,43 @@
     padding: 0;
     margin: 0 0 var(--s-sm);
   }
-  .list li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 10px;
+  .list {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) max-content max-content auto 1fr;
+    column-gap: var(--s-md);
+  }
+  .themes {
+    grid-template-columns: minmax(0, max-content) 1fr;
+  }
+  .list li,
+  .list p {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
+    min-height: 32px;
+    margin: 0;
+  }
+  .count {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: end;
+  }
+  .themes .count {
+    justify-content: start;
+  }
+  .acts {
+    display: flex;
+    gap: 2px;
+  }
+  @media (max-width: 640px) {
+    .list li,
+    .list p {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+    }
   }
   .log {
     list-style: none;

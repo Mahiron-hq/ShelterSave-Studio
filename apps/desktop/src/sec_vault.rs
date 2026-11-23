@@ -384,6 +384,42 @@ fn storage(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     let row_h = 34.0;
+    let small = egui::TextStyle::Small.resolve(ui.style());
+    let gap = ui.spacing().item_spacing.x;
+    let expert = app.expert();
+    let unknown = app.t("c.unknownItem");
+    let meta_w = |rarity: &str, known: bool, id: &str, ui: &egui::Ui| {
+        let mut parts = Vec::new();
+        if !known {
+            parts.push(widgets::text_width(ui, &unknown, small.clone()));
+        }
+        if !rarity.is_empty() {
+            parts.push(widgets::text_width(
+                ui,
+                &rarity_label(app, rarity),
+                small.clone(),
+            ));
+        }
+        if expert {
+            parts.push(widgets::text_width(ui, id, style::mono(11.0)));
+        }
+        parts.iter().sum::<f32>() + gap * parts.len().saturating_sub(1) as f32
+    };
+    let mut name_w: f32 = 0.0;
+    let mut meta_col: f32 = 0.0;
+    let mut count_w: f32 = 0.0;
+    for ((_, id), n, name, rarity, known) in &rows {
+        name_w = name_w.max(widgets::text_width(ui, name, style::bold(14.0)));
+        meta_col = meta_col.max(meta_w(rarity, *known, id, ui));
+        count_w = count_w.max(widgets::text_width(
+            ui,
+            &format!("× {n}"),
+            style::mono(13.0),
+        ));
+    }
+    let name_w = (name_w + 2.0).clamp(80.0, (ui.available_width() * 0.4).max(80.0));
+    let meta_col = meta_col + 2.0;
+    let count_w = count_w + 2.0;
     egui::ScrollArea::vertical()
         .id_salt("storage_rows")
         .auto_shrink(false)
@@ -407,67 +443,67 @@ fn storage(app: &mut App, ui: &mut egui::Ui) {
                         ItemKind::Pet => icons::PAW,
                     };
                     ui.label(RichText::new(icon).color(c.muted));
-                    let name_resp = ui.add(
-                        egui::Label::new(RichText::new(name).font(style::bold(14.0)))
-                            .sense(Sense::hover()),
-                    );
-                    item_hover(app, name_resp, *k, id);
-                    if !*known {
-                        ui.label(
-                            RichText::new(app.t("c.unknownItem"))
-                                .small()
-                                .color(c.warning),
+                    widgets::cell(ui, name_w, egui::Align::Min, |ui| {
+                        let name_resp = ui.add(
+                            egui::Label::new(RichText::new(name).font(style::bold(14.0)))
+                                .truncate()
+                                .sense(Sense::hover()),
                         );
-                    }
-                    if !rarity.is_empty() {
-                        ui.label(
-                            RichText::new(rarity_label(app, rarity))
-                                .small()
-                                .color(c.muted),
-                        );
-                    }
-                    if app.expert()
-                        && ui
-                            .add(
-                                egui::Label::new(
-                                    RichText::new(id).font(style::mono(11.0)).color(c.muted),
+                        item_hover(app, name_resp, *k, id);
+                    });
+                    widgets::cell(ui, meta_col, egui::Align::Min, |ui| {
+                        if !*known {
+                            ui.label(RichText::new(&unknown).small().color(c.warning));
+                        }
+                        if !rarity.is_empty() {
+                            ui.label(
+                                RichText::new(rarity_label(app, rarity))
+                                    .small()
+                                    .color(c.muted),
+                            );
+                        }
+                        if expert
+                            && ui
+                                .add(
+                                    egui::Label::new(
+                                        RichText::new(id).font(style::mono(11.0)).color(c.muted),
+                                    )
+                                    .sense(Sense::click()),
                                 )
-                                .sense(Sense::click()),
-                            )
-                            .on_hover_text(app.t("c.copy"))
-                            .clicked()
-                    {
-                        ui.ctx().copy_text(id.clone());
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if crate::app::small_icon(ui, icons::TRASH, &app.t("c.removeAll")).clicked()
+                                .on_hover_text(app.t("c.copy"))
+                                .clicked()
                         {
-                            app.act(Action::RemoveItems {
-                                kind: *k,
-                                id: id.clone(),
-                                count: *n as i64,
-                            });
+                            ui.ctx().copy_text(id.clone());
                         }
-                        if ui
-                            .small_button("−")
-                            .on_hover_text(app.t("vault.removeOne"))
-                            .clicked()
-                        {
-                            app.act(Action::RemoveItems {
-                                kind: *k,
-                                id: id.clone(),
-                                count: 1,
-                            });
-                        }
-                        if ui.small_button("+").on_hover_text(app.t("c.add")).clicked() {
-                            app.act(Action::AddItems {
-                                kind: *k,
-                                id: id.clone(),
-                                count: 1,
-                            });
-                        }
+                    });
+                    widgets::cell(ui, count_w, egui::Align::Max, |ui| {
                         ui.label(RichText::new(format!("× {n}")).font(style::mono(13.0)));
                     });
+                    if ui.small_button("+").on_hover_text(app.t("c.add")).clicked() {
+                        app.act(Action::AddItems {
+                            kind: *k,
+                            id: id.clone(),
+                            count: 1,
+                        });
+                    }
+                    if ui
+                        .small_button("−")
+                        .on_hover_text(app.t("vault.removeOne"))
+                        .clicked()
+                    {
+                        app.act(Action::RemoveItems {
+                            kind: *k,
+                            id: id.clone(),
+                            count: 1,
+                        });
+                    }
+                    if crate::app::small_icon(ui, icons::TRASH, &app.t("c.removeAll")).clicked() {
+                        app.act(Action::RemoveItems {
+                            kind: *k,
+                            id: id.clone(),
+                            count: *n as i64,
+                        });
+                    }
                 });
             }
         });
@@ -889,6 +925,14 @@ pub struct MapDrag {
     pub grab: i64,
 }
 
+/// Room moved with the keyboard: its planned row and column.
+#[derive(Clone, Copy, Debug)]
+pub struct MapKeys {
+    pub room: i64,
+    pub row: i64,
+    pub col: i64,
+}
+
 enum Spot {
     Ok,
     Warn(&'static str),
@@ -966,8 +1010,17 @@ fn map_view(app: &mut App, ui: &mut egui::Ui, root: &Value) {
     let shown = (used + 2).clamp(1, grid_rows);
     panel(ui, |ui| {
         ui.label(RichText::new(app.t("vault.map")).font(style::bold(16.0)));
-        ui.label(RichText::new(app.t("vault.mapHelp")).small().color(c.muted));
+        ui.label(
+            RichText::new(format!(
+                "{} {}",
+                app.t("vault.mapHelp"),
+                app.t("map.keysHelp")
+            ))
+            .small()
+            .color(c.muted),
+        );
         ui.add_space(4.0);
+        map_keys(app, ui, &list);
         let cell = ((ui.available_width() - 4.0) / grid_cols as f32).clamp(11.0, 40.0);
         let h = (cell * 1.6).max(34.0);
         let (rect, bg) = ui.allocate_exact_size(
@@ -1198,6 +1251,15 @@ fn map_view(app: &mut App, ui: &mut egui::Ui, root: &Value) {
             }
         }
 
+        if let Some(k) = app.map_keys {
+            if let Some(r) = list.iter().find(|r| r.id == k.room) {
+                if (k.row, k.col) != (r.row, r.col) {
+                    let s = spot(app, root, &r.kind, k.row, k.col, r.merge, Some(r.id));
+                    ghost(&painter, span(k.row, k.col, r.width), &s);
+                }
+            }
+        }
+
         if let Some(add) = app.map_add.clone() {
             let col = add_col(root, &add);
             let (s, w) = if add.rock {
@@ -1215,6 +1277,69 @@ fn map_view(app: &mut App, ui: &mut egui::Ui, root: &Value) {
             ghost(&painter, span(add.row, col, w), &s);
         }
     });
+}
+
+/// Alt + arrows move the selected room's outline, Enter moves the room there, Escape cancels.
+fn map_keys(app: &mut App, ui: &egui::Ui, list: &[map::Placed]) {
+    if app.map_keys.is_some_and(|k| app.room_sel != Some(k.room)) {
+        app.map_keys = None;
+    }
+    let Some(r) = app
+        .room_sel
+        .and_then(|id| list.iter().find(|r| r.id == id))
+        .filter(|r| !map::FIXED_ROOMS.contains(&r.kind.as_str()))
+    else {
+        return;
+    };
+    if ui.ctx().egui_wants_keyboard_input() {
+        return;
+    }
+    let active = app.map_keys.is_some();
+    let (step, enter, escape) = ui.ctx().input_mut(|i| {
+        let mut step = (0, 0);
+        for (key, d) in [
+            (egui::Key::ArrowUp, (-1, 0)),
+            (egui::Key::ArrowDown, (1, 0)),
+            (egui::Key::ArrowLeft, (0, -1)),
+            (egui::Key::ArrowRight, (0, 1)),
+        ] {
+            let hit = i.consume_key(egui::Modifiers::ALT, key)
+                || (active && i.consume_key(egui::Modifiers::NONE, key));
+            if hit {
+                step = (step.0 + d.0, step.1 + d.1);
+            }
+        }
+        let enter = active && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+        let escape = active && i.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+        (step, enter, escape)
+    });
+    if step != (0, 0) {
+        let k = app.map_keys.unwrap_or(MapKeys {
+            room: r.id,
+            row: r.row,
+            col: r.col,
+        });
+        app.map_keys = Some(MapKeys {
+            row: k.row + step.0,
+            col: k.col + step.1,
+            ..k
+        });
+    }
+    if escape {
+        app.map_keys = None;
+    }
+    if enter {
+        if let Some(k) = app.map_keys.take() {
+            if (k.row, k.col) != (r.row, r.col) {
+                app.act(Action::MoveRoom {
+                    room: r.id,
+                    row: k.row,
+                    col: k.col,
+                    apart: app.keep_apart,
+                });
+            }
+        }
+    }
 }
 
 /// Room name inside its box on the map: wrapped to the box and cut with an

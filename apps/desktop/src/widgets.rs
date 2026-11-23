@@ -96,7 +96,8 @@ pub fn hint_label(ui: &mut egui::Ui, label: &str, help: &str) -> egui::Response 
     );
     if !help.is_empty() {
         job.append(
-            &format!(" {}", icons::HELP),
+            // No-break space keeps the mark next to the last word.
+            &format!("\u{a0}{}", icons::HELP),
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::proportional(12.0),
@@ -106,16 +107,24 @@ pub fn hint_label(ui: &mut egui::Ui, label: &str, help: &str) -> egui::Response 
             },
         );
     }
-    let r = ui.add(egui::Label::new(job).wrap().sense(egui::Sense::hover()));
+    let r = ui.add(
+        egui::Label::new(job)
+            .wrap()
+            .selectable(false)
+            .sense(egui::Sense::hover()),
+    );
     if help.is_empty() {
         r
     } else {
-        r.on_hover_ui(|ui| {
+        r.on_hover_cursor(egui::CursorIcon::Help).on_hover_ui(|ui| {
             ui.set_max_width(380.0);
             ui.label(help);
         })
     }
 }
+
+/// Width of the label column of field rows.
+pub const LABEL_COL: f32 = 240.0;
 
 /// Common row: label column, editor, then markers and revert button.
 pub fn row(
@@ -227,12 +236,23 @@ pub fn row(
                 body(app, ui);
             } else {
                 ui.horizontal_top(|ui| {
-                    let label_w = 240.0_f32.min(ui.available_width() * 0.4);
+                    let label_w = LABEL_COL.min(ui.available_width() * 0.4);
                     ui.allocate_ui_with_layout(
                         egui::vec2(label_w, 0.0),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.set_width(label_w);
+                            // Centre the first label line on the editor line.
+                            let text_h = ui
+                                .painter()
+                                .layout_no_wrap(
+                                    "Ag".into(),
+                                    style::bold(14.0),
+                                    egui::Color32::WHITE,
+                                )
+                                .size()
+                                .y;
+                            ui.add_space(((ui.spacing().interact_size.y - text_h) / 2.0).max(0.0));
                             label(ui);
                         },
                     );
@@ -1042,3 +1062,31 @@ fn value_row(app: &mut App, ui: &mut egui::Ui, p: &[Seg], key: &str, child: &Val
 }
 
 pub use crate::style::markdown;
+
+/// Width of a text on one line.
+pub fn text_width(ui: &egui::Ui, text: &str, font: egui::FontId) -> f32 {
+    ui.painter()
+        .layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE)
+        .size()
+        .x
+}
+
+/// Fixed-width cell of a row, so the same column lines up in every row.
+pub fn cell<R>(
+    ui: &mut egui::Ui,
+    width: f32,
+    align: egui::Align,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let h = ui.spacing().interact_size.y;
+    let layout = if align == egui::Align::Max {
+        egui::Layout::right_to_left(egui::Align::Center)
+    } else {
+        egui::Layout::left_to_right(egui::Align::Center)
+    };
+    ui.allocate_ui_with_layout(egui::vec2(width, h), layout, |ui| {
+        ui.set_width(width);
+        add(ui)
+    })
+    .inner
+}

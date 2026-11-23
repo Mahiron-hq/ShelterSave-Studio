@@ -90,6 +90,7 @@ pub enum Modal {
     Review,
     Settings,
     About,
+    Help,
     Journal,
     ExpertConfirm,
     CloseConfirm(AfterClose),
@@ -177,6 +178,7 @@ pub struct App {
     /// Type, size and level of the last thing built, offered again on the next empty cell.
     pub last_add: Option<crate::sec_vault::MapAdd>,
     pub map_drag: Option<crate::sec_vault::MapDrag>,
+    pub map_keys: Option<crate::sec_vault::MapKeys>,
     /// Expert mode: built or moved rooms do not merge with equal neighbours.
     pub keep_apart: bool,
     pub tree_search: String,
@@ -260,6 +262,7 @@ impl App {
             map_add: None,
             last_add: None,
             map_drag: None,
+            map_keys: None,
             keep_apart: false,
             tree_search: String::new(),
             tree_edit: HashMap::new(),
@@ -504,6 +507,7 @@ impl App {
         self.map_add = None;
         self.last_add = None;
         self.map_drag = None;
+        self.map_keys = None;
         self.bufs.clear();
         self.drags.clear();
         self.tree_edit.clear();
@@ -634,6 +638,8 @@ impl App {
                 self.drags.clear();
                 self.tree_edit.clear();
                 self.map_drag = None;
+                self.map_keys = None;
+                self.map_keys = None;
                 let mut text = self.t("reload.done");
                 if failed > 0 {
                     text.push(' ');
@@ -856,6 +862,9 @@ impl App {
                 }
                 if icon_button(ui, icons::SETTINGS, &self.t("tb.settings"), true).clicked() {
                     self.modals.push(Modal::Settings);
+                }
+                if icon_button(ui, icons::HELP, &self.t("tb.help"), true).clicked() {
+                    self.modals.push(Modal::Help);
                 }
                 let (mode_text, fill, fg) = if self.expert() {
                     (self.t("tb.mode.expert"), c.warning_soft, c.warning)

@@ -122,14 +122,15 @@
         <li title={app.expert ? `${a.objectiveId} / ${a.steamId}` : app.t("o.achievementToggleHelp")}>
           <Check checked={on} label={achName(a)} onchange={(v) => app.act({ action: "setAchievement", id: a.objectiveId, done: v })} />
           {#if pr}
-            <NumPick
+            <span class="count"><NumPick
               value={pr.value}
               label={achName(a)}
               lo={0}
               hi={Math.max(a.goal > 0 ? a.goal : 1000000, pr.value)}
               oncommit={(v) => app.act({ action: "setNumber", path: pr.path, value: v })}
             />
-            {#if a.goal > 0}<span class="muted small">{app.t("o.ofMax", { n: a.goal })}</span>{/if}
+              {#if a.goal > 0}<span class="muted small">{app.t("o.ofMax", { n: a.goal })}</span>{/if}</span
+            >
           {/if}
         </li>
       {/each}
@@ -162,12 +163,29 @@
     padding: 0;
     margin: 0;
   }
+  .list {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) 1fr;
+    column-gap: var(--s-lg);
+  }
   .list li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 10px;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    padding: 3px 0;
+    min-height: 34px;
+  }
+  .count {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  @media (max-width: 640px) {
+    .list li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+    }
   }
   p {
     margin: 4px 0;

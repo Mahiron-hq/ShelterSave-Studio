@@ -55,19 +55,28 @@
     return h
   })
   const shownLabel = $derived(label ?? info.label)
+  // The help mark stays glued to the last word when a long label wraps.
+  const split = $derived.by(() => {
+    const t = shownLabel.trimEnd()
+    const i = t.lastIndexOf(" ")
+    return i < 0 ? ["", t] : [t.slice(0, i + 1), t.slice(i + 1)]
+  })
 </script>
 
 <div class="row" class:modified={state.modified}>
   <div class="label">
-    <span class="name" {id}>{shownLabel}</span>
-    {#if fullHelp}
-      <Tooltip>
-        <TooltipTrigger class="help" aria-label={app.t("tb.help")}>
-          <Icon name="help" />
-        </TooltipTrigger>
-        <TooltipContent class="help-text">{fullHelp}</TooltipContent>
-      </Tooltip>
-    {/if}
+    <span class="name" {id}
+      >{split[0]}<span class="tail"
+        >{split[1]}{#if fullHelp}
+          <Tooltip>
+            <TooltipTrigger class="help" aria-label={app.t("tb.help")}>
+              <Icon name="help" />
+            </TooltipTrigger>
+            <TooltipContent class="help-text">{fullHelp}</TooltipContent>
+          </Tooltip>
+        {/if}</span
+      ></span
+    >
     {#if app.expert && ps}
       <span class="mono muted path">{ps}</span>
     {/if}
@@ -99,7 +108,7 @@
 <style>
   .row {
     display: grid;
-    grid-template-columns: minmax(140px, 240px) minmax(0, 1fr);
+    grid-template-columns: minmax(140px, 260px) minmax(0, 1fr);
     gap: var(--s-md);
     padding: 6px 8px;
     border-radius: var(--r-md);
@@ -113,12 +122,21 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    align-self: start;
+    min-height: 32px;
     gap: 2px 6px;
     min-width: 0;
   }
   .name {
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+  .tail {
+    white-space: nowrap;
+  }
+  .tail :global(.help) {
+    margin-inline-start: 4px;
+    vertical-align: -2px;
   }
   .path {
     font-size: 11px;

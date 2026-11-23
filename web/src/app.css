@@ -521,3 +521,109 @@ table.grid th {
   font-size: 22px;
   margin-bottom: var(--s-md);
 }
+
+/* Read-only "name value" lines use the label column of field rows. */
+.panel p > .muted:first-child {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: calc(268px + var(--s-md));
+  padding-inline-start: 8px;
+  vertical-align: top;
+}
+@media (max-width: 520px) {
+  .panel p > .muted:first-child {
+    min-width: 0;
+    padding-inline-start: 0;
+    margin-inline-end: 4px;
+  }
+}
+
+/* Motion: hover, press and open feedback like the desktop app. */
+button,
+.btn,
+input,
+textarea,
+select,
+[data-slot="select-trigger"],
+[data-slot="combobox-input"],
+[data-slot="checkbox"],
+[data-slot="radio"],
+[data-slot="tabs-trigger"] {
+  transition:
+    background-color var(--motion),
+    border-color var(--motion),
+    color var(--motion),
+    box-shadow var(--motion),
+    transform var(--motion);
+}
+button:active:not(:disabled),
+.btn:active {
+  transform: translateY(1px);
+}
+input:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus),
+[data-slot="select-trigger"]:hover,
+[data-slot="combobox-input"]:hover:not(:focus) {
+  border-color: var(--muted);
+}
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+[data-slot="checkbox"]:hover {
+  border-color: var(--text);
+}
+[data-slot="checkbox"] .icon,
+[data-slot="checkbox-indicator"] {
+  animation: pop var(--motion) ease-out;
+}
+[data-slot="select-content"],
+[data-slot="combobox-content"],
+[data-slot="popover-content"],
+[data-slot="menu-content"],
+[data-slot="tooltip-content"],
+[data-slot="hover-card-content"],
+.hover-card {
+  animation: fade-in var(--motion) ease-out;
+}
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
+  animation: dialog-in calc(var(--motion) * 1.3) ease-out;
+}
+[data-slot="dialog-backdrop"],
+[data-slot="alert-dialog-backdrop"] {
+  animation: fade-in calc(var(--motion) * 1.3) ease-out;
+}
+[data-slot="collapsible-panel"][data-open] {
+  animation: unfold calc(var(--motion) * 1.3) ease-out;
+}
+.fold-trigger .icon,
+[data-slot="collapsible-trigger"] .icon {
+  transition: transform var(--motion);
+}
+.panel {
+  animation: fade-in calc(var(--motion) * 1.3) ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+}
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes pop {
+  from {
+    transform: scale(0.6);
+  }
+}

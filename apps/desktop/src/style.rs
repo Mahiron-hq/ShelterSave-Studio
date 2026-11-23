@@ -268,31 +268,50 @@ pub fn mono(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name(MONO.into()))
 }
 
-/// Minimal Markdown for the bundled documents: headings, lists, bold.
+/// Minimal Markdown for the bundled documents: headings, lists, bold, code.
 pub fn markdown(ui: &mut egui::Ui, text: &str) {
     let c = colors(ui.ctx());
     let mut para = String::new();
     let flush = |ui: &mut egui::Ui, para: &mut String| {
         if !para.trim().is_empty() {
-            ui.label(para.trim().replace("**", ""));
+            ui.add(egui::Label::new(inline(ui, para.trim())).wrap());
             ui.add_space(4.0);
         }
         para.clear();
     };
     for line in text.lines() {
         let l = line.trim_end();
+        let numbered = l
+            .split_once(". ")
+            .filter(|(n, _)| !n.is_empty() && n.chars().all(|ch| ch.is_ascii_digit()));
         if let Some(h) = l.strip_prefix("# ") {
             flush(ui, &mut para);
             ui.label(RichText::new(h).font(bold(18.0)));
         } else if let Some(h) = l.strip_prefix("## ") {
             flush(ui, &mut para);
-            ui.add_space(4.0);
+            ui.add_space(8.0);
             ui.label(RichText::new(h).font(bold(15.0)));
+        } else if let Some(h) = l.strip_prefix("### ") {
+            flush(ui, &mut para);
+            ui.label(RichText::new(h).font(bold(14.0)));
         } else if let Some(item) = l.strip_prefix("- ") {
             flush(ui, &mut para);
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal_top(|ui| {
                 ui.label(RichText::new("•").color(c.accent));
-                ui.label(item.replace("**", ""));
+                ui.add(egui::Label::new(inline(ui, item)).wrap());
+            });
+        } else if let Some((n, item)) = numbered {
+            flush(ui, &mut para);
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(20.0, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(20.0);
+                        ui.label(RichText::new(format!("{n}.")).color(c.accent));
+                    },
+                );
+                ui.add(egui::Label::new(inline(ui, item)).wrap());
             });
         } else if l.is_empty() {
             flush(ui, &mut para);
@@ -302,4 +321,54 @@ pub fn markdown(ui: &mut egui::Ui, text: &str) {
         }
     }
     flush(ui, &mut para);
+}
+
+/// One wrapped paragraph with **bold** and `code` runs.
+fn inline(ui: &egui::Ui, text: &str) -> egui::text::LayoutJob {
+    let c = colors(ui.ctx());
+    let size = 14.0;
+    let mut job = egui::text::LayoutJob::default();
+    let (mut strong, mut code) = (false, false);
+    let mut rest = text;
+    while !rest.is_empty() {
+        let next = [rest.find("**"), rest.find('`')]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(rest.len());
+        let (run, tail) = rest.split_at(next);
+        if !run.is_empty() {
+            let font = if code {
+                mono(size - 1.0)
+            } else if strong {
+                bold(size)
+            } else {
+                FontId::proportional(size)
+            };
+            job.append(
+                run,
+                0.0,
+                egui::TextFormat {
+                    font_id: font,
+                    color: c.text,
+                    background: if code {
+                        c.surface_alt
+                    } else {
+                        Color32::TRANSPARENT
+                    },
+                    ..Default::default()
+                },
+            );
+        }
+        if let Some(t) = tail.strip_prefix("**") {
+            strong = !strong;
+            rest = t;
+        } else if let Some(t) = tail.strip_prefix('`') {
+            code = !code;
+            rest = t;
+        } else {
+            rest = tail;
+        }
+    }
+    job
 }

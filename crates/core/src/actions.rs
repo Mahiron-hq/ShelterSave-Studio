@@ -277,6 +277,12 @@ pub enum Action {
     SetStrangerTime {
         seconds: f64,
     },
+    /// Daily vault report: one day's rating or reward flag; the week rating follows like in the game.
+    SetDayRating {
+        index: usize,
+        rating: Option<i64>,
+        collected: Option<bool>,
+    },
     /// Moves a game timer so it fires after `seconds`.
     SetTaskTime {
         id: i64,
@@ -974,6 +980,17 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
         Action::SetStrangerTime { seconds } => {
             set_stranger_time(b, *seconds)?;
             Ok((Label::new("act.setStrangerTime"), 1))
+        }
+        Action::SetDayRating {
+            index,
+            rating,
+            collected,
+        } => {
+            set_day_rating(b, *index, *rating, *collected)?;
+            Ok((
+                Label::new("act.setDayRating").with("n", (index + 1).to_string()),
+                1,
+            ))
         }
         Action::SetTaskTime { id, seconds } => {
             set_task_time(b, *id, *seconds)?;
@@ -2975,6 +2992,72 @@ fn set_stranger_time(b: &mut Builder<'_>, seconds: f64) -> R<()> {
     Ok(())
 }
 
+/// Average the game stores as the week rating (ceil of the mean).
+pub fn week_average(ratings: &[i64]) -> Option<i64> {
+    if ratings.is_empty() {
+        return None;
+    }
+    let sum: i64 = ratings.iter().sum();
+    Some((sum + ratings.len() as i64 - 1).div_euclid(ratings.len() as i64))
+}
+
+fn set_day_rating(
+    b: &mut Builder<'_>,
+    index: usize,
+    rating: Option<i64>,
+    collected: Option<bool>,
+) -> R<()> {
+    if let Some(r) = rating {
+        if !(0..=100).contains(&r) {
+            return Err(RuleError::OutOfRange { min: 0, max: 100 }.into());
+        }
+    }
+    fn list(b: &Builder<'_>, name: &str) -> Vec<Value> {
+        b.get(&p(&["ratingMgr", name]))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    }
+    let days = list(b, "ratings");
+    let last = list(b, "ratingsLast");
+    let day = days.get(index).ok_or(RuleError::NotFound)?;
+    // After the seventh day the game copies the week into ratingsLast (same objects), so both change.
+    let time = |v: &Value| v.get("time").map(Value::to_compact);
+    let mirror =
+        days.len() >= 7 && last.len() == days.len() && last.get(index).and_then(time) == time(day);
+    let mut lists = vec!["ratings"];
+    if mirror {
+        lists.push("ratingsLast");
+    }
+    for name in lists {
+        if let Some(r) = rating {
+            let path = pi(&["ratingMgr", name], index, &["rating"]);
+            if !set_num(b, path, r as f64)? {
+                return Err(RuleError::NotFound.into());
+            }
+        }
+        if let Some(c) = collected {
+            let path = pi(&["ratingMgr", name], index, &["collected"]);
+            if b.get(&path).is_some() {
+                b.set(path, Value::Bool(c))?;
+            }
+        }
+    }
+    if mirror && rating.is_some() {
+        let values: Vec<i64> = list(b, "ratings")
+            .iter()
+            .filter_map(|d| d.get("rating").and_then(Value::as_i64))
+            .collect();
+        if let Some(avg) = week_average(&values) {
+            let path = p(&["ratingMgr", "weekRating"]);
+            if b.get(&path).is_some() {
+                set_num(b, path, avg as f64)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Shifts both ends of a task, so a recurrent task keeps its length when the game reloads it.
 fn set_task_time(b: &mut Builder<'_>, id: i64, seconds: f64) -> R<()> {
     if !(0.0..=1.0e7).contains(&seconds) {
@@ -3990,6 +4073,55 @@ mod tests {
             .unwrap();
         }
         root
+    }
+
+    #[test]
+    fn day_rating_updates_full_week() {
+        let day = |r: i64, t: &str| format!(r#"{{"rating":{r},"time":{t},"collected":true}}"#);
+        let week: Vec<String> = (0..7).map(|i| day(80, &format!("{}.5", i * 10))).collect();
+        let week = week.join(",");
+        let mut root = json::parse(&format!(
+            r#"{{"ratingMgr":{{"ratings":[{week}],"ratingsLast":[{week}],"weekRating":80,"lastWeekRating":70}}}}"#
+        ))
+        .unwrap();
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let set = Action::SetDayRating {
+            index: 6,
+            rating: Some(100),
+            collected: Some(false),
+        };
+        run(&mut root, &ctx, &set).unwrap();
+        let rm = root.get("ratingMgr").unwrap();
+        assert_eq!(rm.get("weekRating").and_then(Value::as_i64), Some(83));
+        assert_eq!(rm.get("lastWeekRating").and_then(Value::as_i64), Some(70));
+        let last = &rm.get("ratingsLast").and_then(Value::as_array).unwrap()[6];
+        assert_eq!(last.get("rating").and_then(Value::as_i64), Some(100));
+        assert_eq!(last.get("collected").and_then(Value::as_bool), Some(false));
+
+        let mut part = json::parse(&format!(
+            r#"{{"ratingMgr":{{"ratings":[{}],"ratingsLast":[{week}],"weekRating":80}}}}"#,
+            day(50, "99.5")
+        ))
+        .unwrap();
+        let orig = part.clone();
+        let ctx = Ctx {
+            mode: Mode::Normal,
+            original: &orig,
+        };
+        let set = Action::SetDayRating {
+            index: 0,
+            rating: Some(10),
+            collected: None,
+        };
+        run(&mut part, &ctx, &set).unwrap();
+        let rm = part.get("ratingMgr").unwrap();
+        assert_eq!(rm.get("weekRating").and_then(Value::as_i64), Some(80));
+        assert!(rm.to_compact().contains(r#""rating":10"#));
+        assert_eq!(week_average(&[84, 80, 80, 81, 82, 96, 96]), Some(86));
     }
 
     #[test]

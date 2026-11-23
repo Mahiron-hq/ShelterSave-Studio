@@ -136,9 +136,26 @@ fn note(ui: &mut egui::Ui, text: &str) {
 /// Read-only line: muted name, then the value.
 fn info(ui: &mut egui::Ui, name: &str, value: &str) {
     let c = style::colors(ui.ctx());
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(name).color(c.muted));
-        ui.label(value);
+    if ui.available_width() < 460.0 {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(name).color(c.muted));
+            ui.label(value);
+        });
+        return;
+    }
+    // Same columns as widgets::row, so values line up with editors.
+    ui.horizontal_top(|ui| {
+        ui.add_space(8.0);
+        let w = widgets::LABEL_COL.min(ui.available_width() * 0.4);
+        ui.allocate_ui_with_layout(
+            egui::vec2(w, 0.0),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.set_width(w);
+                ui.label(RichText::new(name).color(c.muted));
+            },
+        );
+        ui.add(egui::Label::new(value).wrap());
     });
 }
 
@@ -1240,24 +1257,48 @@ fn team_loot(app: &mut App, ui: &mut egui::Ui, team: usize, t: &Value) {
     if groups.is_empty() {
         note(ui, &app.t("o.lootEmpty"));
     }
-    for (id, kind, recipe, idx) in &groups {
-        let name = ItemKind::parse(kind)
-            .and_then(|k| catalog().item(k, id))
-            .map_or_else(
-                || id.clone(),
-                |i| i.name.get(app.settings.russian_item_names).to_string(),
-            );
-        ui.horizontal_wrapped(|ui| {
-            let kind_text = app.t(&format!("it.kind.{kind}"));
-            let mut line = format!("{name}  ·  {kind_text}");
+    let lines: Vec<(String, String)> = groups
+        .iter()
+        .map(|(id, kind, recipe, _)| {
+            let name = ItemKind::parse(kind)
+                .and_then(|k| catalog().item(k, id))
+                .map_or_else(
+                    || id.clone(),
+                    |i| i.name.get(app.settings.russian_item_names).to_string(),
+                );
+            let mut kind_text = app.t(&format!("it.kind.{kind}"));
             if *recipe {
-                line = format!("{line}  ·  {}", app.t("o.lootRecipe"));
+                kind_text = format!("{kind_text}  ·  {}", app.t("o.lootRecipe"));
             }
-            let resp = ui.add(egui::Label::new(line).sense(egui::Sense::hover()));
-            if let Some(k) = ItemKind::parse(kind) {
-                crate::sec_vault::item_hover(app, resp, k, id);
-            }
-            ui.label(RichText::new(format!("× {}", idx.len())).font(style::mono(13.0)));
+            (name, kind_text)
+        })
+        .collect();
+    let small = egui::TextStyle::Small.resolve(ui.style());
+    let width = |f: &dyn Fn(usize) -> f32| (0..groups.len()).map(f).fold(0.0_f32, f32::max) + 2.0;
+    let name_w =
+        width(&|i| widgets::text_width(ui, &lines[i].0, egui::TextStyle::Body.resolve(ui.style())))
+            .min((ui.available_width() * 0.4).max(80.0));
+    let kind_w = width(&|i| widgets::text_width(ui, &lines[i].1, small.clone()));
+    let count_w =
+        width(&|i| widgets::text_width(ui, &format!("× {}", groups[i].3.len()), style::mono(13.0)));
+    for ((id, kind, _, idx), (name, kind_text)) in groups.iter().zip(&lines) {
+        ui.horizontal(|ui| {
+            widgets::cell(ui, name_w, egui::Align::Min, |ui| {
+                let resp = ui.add(
+                    egui::Label::new(name)
+                        .truncate()
+                        .sense(egui::Sense::hover()),
+                );
+                if let Some(k) = ItemKind::parse(kind) {
+                    crate::sec_vault::item_hover(app, resp, k, id);
+                }
+            });
+            widgets::cell(ui, kind_w, egui::Align::Min, |ui| {
+                ui.label(RichText::new(kind_text).small().color(c.muted));
+            });
+            widgets::cell(ui, count_w, egui::Align::Max, |ui| {
+                ui.label(RichText::new(format!("× {}", idx.len())).font(style::mono(13.0)));
+            });
             if crate::app::small_icon(ui, icons::X, &app.t("o.lootRemoveOne")).clicked() {
                 remove = idx.last().map(|i| vec![*i]);
             }
@@ -1328,10 +1369,24 @@ fn team_loot(app: &mut App, ui: &mut egui::Ui, team: usize, t: &Value) {
             .theme(id)
             .map_or_else(|| id.to_string(), |t| t.name.get(ru).to_string())
     };
+    let theme_w = themes
+        .iter()
+        .map(|(id, _)| {
+            widgets::text_width(ui, &tname(id), egui::TextStyle::Body.resolve(ui.style()))
+        })
+        .fold(0.0_f32, f32::max)
+        .min((ui.available_width() * 0.4).max(80.0))
+        + 2.0;
     for (id, parts) in &themes {
-        ui.horizontal_wrapped(|ui| {
-            let r = ui.label(tname(id));
-            crate::sec_vault::theme_hover(app, r, id);
+        ui.horizontal(|ui| {
+            widgets::cell(ui, theme_w, egui::Align::Min, |ui| {
+                let r = ui.add(
+                    egui::Label::new(tname(id))
+                        .truncate()
+                        .sense(egui::Sense::hover()),
+                );
+                crate::sec_vault::theme_hover(app, r, id);
+            });
             let key = format!("team_theme:{team}:{id}");
             if let Some(v) =
                 widgets::pick_number(app, ui, &key, *parts as f64, (0.0, 9.0), None, true)
@@ -1753,17 +1808,33 @@ fn achievements(app: &mut App, ui: &mut egui::Ui, r: &Value) {
         );
         note(ui, &app.t("o.achievementsHelp"));
         ui.add_space(4.0);
-        for a in &list {
-            let key = format!("ach.{}", a.id);
-            let name = app.t(&key);
-            let name = if name == key {
-                a.name.get(ru).to_string()
-            } else {
-                name
-            };
+        let names: Vec<String> = list
+            .iter()
+            .map(|a| {
+                let key = format!("ach.{}", a.id);
+                let name = app.t(&key);
+                if name == key {
+                    a.name.get(ru).to_string()
+                } else {
+                    name
+                }
+            })
+            .collect();
+        let sp = ui.spacing();
+        let tick = sp.icon_width + sp.icon_spacing + sp.button_padding.x * 2.0;
+        let body = egui::TextStyle::Body.resolve(ui.style());
+        let name_w = (names
+            .iter()
+            .map(|n| widgets::text_width(ui, n, body.clone()))
+            .fold(0.0_f32, f32::max)
+            + tick
+            + 4.0)
+            .min((ui.available_width() * 0.6).max(120.0));
+        for (a, name) in list.iter().zip(names) {
             let mut v = done.contains(&a.objective_id);
-            ui.horizontal_wrapped(|ui| {
-                let resp = ui.checkbox(&mut v, name);
+            ui.horizontal(|ui| {
+                let resp =
+                    widgets::cell(ui, name_w, egui::Align::Min, |ui| ui.checkbox(&mut v, name));
                 let resp = if expert {
                     resp.on_hover_text(format!("{} / {}", a.objective_id, a.steam_id))
                 } else {
@@ -2121,10 +2192,22 @@ fn events(app: &mut App, ui: &mut egui::Ui) {
             if days.is_empty() {
                 note(ui, &app.t("o.ratingNone"));
             }
+            let body = egui::TextStyle::Body.resolve(ui.style());
+            let day_w = (1..=days.len().max(1))
+                .map(|n| {
+                    widgets::text_width(
+                        ui,
+                        &app.tf("o.ratingDay", &[("n", n.to_string())]),
+                        body.clone(),
+                    )
+                })
+                .fold(0.0_f32, f32::max)
+                + 4.0;
             for (k, day) in days.iter().enumerate() {
-                let base = pi(&["ratingMgr", "ratings"], k, &[]);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(app.tf("o.ratingDay", &[("n", (k + 1).to_string())]));
+                ui.horizontal(|ui| {
+                    widgets::cell(ui, day_w, egui::Align::Min, |ui| {
+                        ui.label(app.tf("o.ratingDay", &[("n", (k + 1).to_string())]));
+                    });
                     if let Some(v) = vault::int(day, &["rating"]) {
                         let key = format!("rating:{k}");
                         if let Some(n) = widgets::pick_number(
@@ -2137,9 +2220,10 @@ fn events(app: &mut App, ui: &mut egui::Ui) {
                             true,
                         ) {
                             if n as i64 != v {
-                                app.act(Action::SetInt {
-                                    path: join(&base, "rating"),
-                                    value: n as i64,
+                                app.act(Action::SetDayRating {
+                                    index: k,
+                                    rating: Some(n as i64),
+                                    collected: None,
                                 });
                             }
                         }
@@ -2151,21 +2235,59 @@ fn events(app: &mut App, ui: &mut egui::Ui) {
                             .on_hover_text(app.t("o.ratingCollectedHelp"))
                             .changed()
                         {
-                            app.act(Action::SetBool {
-                                path: join(&base, "collected"),
-                                value: got,
+                            app.act(Action::SetDayRating {
+                                index: k,
+                                rating: None,
+                                collected: Some(got),
                             });
                         }
                     }
                 });
             }
-            for (k, label) in [
-                ("weekRating", "o.ratingWeek"),
-                ("lastWeekRating", "o.ratingLastWeek"),
+            ui.add_space(4.0);
+            let values: Vec<i64> = days
+                .iter()
+                .filter_map(|d| vault::int(d, &["rating"]))
+                .collect();
+            let mut totals: Vec<(String, String, String)> = Vec::new();
+            if (1..7).contains(&values.len()) {
+                if let Some(avg) = shelter_core::actions::week_average(&values) {
+                    totals.push((
+                        app.t("o.ratingNow"),
+                        format!("{avg}%"),
+                        app.t("o.ratingNowHelp"),
+                    ));
+                }
+            }
+            for (k, label, help) in [
+                ("weekRating", "o.ratingWeek", "o.ratingWeekHelp"),
+                ("lastWeekRating", "o.ratingLastWeek", ""),
             ] {
                 if let Some(v) = vault::int(&r, &["ratingMgr", k]) {
-                    info(ui, &app.t(label), &format!("{v}%"));
+                    let help = if help.is_empty() {
+                        String::new()
+                    } else {
+                        app.t(help)
+                    };
+                    totals.push((app.t(label), format!("{v}%"), help));
                 }
+            }
+            let label_w = totals
+                .iter()
+                .map(|(l, _, _)| widgets::text_width(ui, l, body.clone()))
+                .fold(0.0_f32, f32::max)
+                + 8.0;
+            for (label, value, help) in totals {
+                ui.horizontal(|ui| {
+                    let r = widgets::cell(ui, label_w, egui::Align::Min, |ui| {
+                        ui.label(RichText::new(label).color(style::colors(ui.ctx()).muted))
+                    });
+                    let v = ui.label(value);
+                    if !help.is_empty() {
+                        r.on_hover_text(&help);
+                        v.on_hover_text(&help);
+                    }
+                });
             }
         });
         ui.add_space(8.0);

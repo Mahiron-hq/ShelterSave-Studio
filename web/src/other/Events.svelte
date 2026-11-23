@@ -17,6 +17,7 @@
   const bc = $derived(r.BottleAndCappyMgrSerializeKey)
   const rf = $derived(r.refugeeSpawner)
   const rm = $derived(r.ratingMgr)
+  const dayRatings = $derived<number[]>((rm?.ratings ?? []).map((d: any) => d?.rating).filter((v: unknown) => typeof v === "number"))
   const cq = $derived(r.completedQuestDataManager)
   const shop = $derived(r.ShopWindow && typeof r.ShopWindow === "object" ? r.ShopWindow : null)
   const task = (v: unknown) => (typeof v === "number" && v >= 0 ? v : null)
@@ -106,23 +107,34 @@
     <h3>{app.t("o.rating")}</h3>
     <p class="muted">{app.t("o.ratingHelp")}</p>
     {#if !(rm.ratings ?? []).length}<p class="muted">{app.t("o.ratingNone")}</p>{/if}
-    {#each rm.ratings ?? [] as day, k (k)}
-      <p class="row-wrap">
-        {app.t("o.ratingDay", { n: k + 1 })}
-        {#if typeof day?.rating === "number"}
-          <NumPick value={day.rating} label={app.t("o.ratingDay", { n: k + 1 })} lo={0} hi={100} slider={[0, 100]} oncommit={(v) => app.act({ action: "setInt", path: ["ratingMgr", "ratings", k, "rating"], value: v })} />
-          <span class="muted">%</span>
-        {/if}
-        {#if typeof day?.collected === "boolean"}
-          <span title={app.t("o.ratingCollectedHelp")}>
-            <Check checked={day.collected} label={app.t("o.ratingCollected")} onchange={(v) => app.act({ action: "setBool", path: ["ratingMgr", "ratings", k, "collected"], value: v })} />
+    <div class="days">
+      {#each rm.ratings ?? [] as day, k (k)}
+        <p>
+          <span>{app.t("o.ratingDay", { n: k + 1 })}</span>
+          <span class="pick">
+            {#if typeof day?.rating === "number"}
+              <NumPick value={day.rating} label={app.t("o.ratingDay", { n: k + 1 })} lo={0} hi={100} slider={[0, 100]} oncommit={(v) => app.act({ action: "setDayRating", index: k, rating: v })} />
+              <span class="muted">%</span>
+            {/if}
           </span>
-        {/if}
-      </p>
-    {/each}
-    {#each [["weekRating", "o.ratingWeek"], ["lastWeekRating", "o.ratingLastWeek"]] as [k, label] (k)}
-      {#if typeof rm[k] === "number"}<p><span class="muted">{app.t(label)}</span> {rm[k]}%</p>{/if}
-    {/each}
+          <span>
+            {#if typeof day?.collected === "boolean"}
+              <span title={app.t("o.ratingCollectedHelp")}>
+                <Check checked={day.collected} label={app.t("o.ratingCollected")} onchange={(v) => app.act({ action: "setDayRating", index: k, collected: v })} />
+              </span>
+            {/if}
+          </span>
+        </p>
+      {/each}
+    </div>
+    <div class="days totals">
+      {#if dayRatings.length > 0 && dayRatings.length < 7}
+        <p title={app.t("o.ratingNowHelp")}><span class="muted">{app.t("o.ratingNow")}</span> <span>{Math.ceil(dayRatings.reduce((a, b) => a + b, 0) / dayRatings.length)}%</span></p>
+      {/if}
+      {#each [["weekRating", "o.ratingWeek", "o.ratingWeekHelp"], ["lastWeekRating", "o.ratingLastWeek", ""]] as [k, label, help] (k)}
+        {#if typeof rm[k] === "number"}<p title={help ? app.t(help) : undefined}><span class="muted">{app.t(label)}</span> <span>{rm[k]}%</span></p>{/if}
+      {/each}
+    </div>
   </section>
 {/if}
 
@@ -155,5 +167,34 @@
 <style>
   p {
     margin: 4px 0;
+  }
+  .days {
+    display: grid;
+    grid-template-columns: max-content max-content 1fr;
+    column-gap: var(--s-md);
+  }
+  .days p {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    min-height: 32px;
+    margin: 0;
+  }
+  .totals {
+    grid-template-columns: max-content 1fr;
+    margin-top: var(--s-sm);
+  }
+  .totals p {
+    min-height: 24px;
+  }
+  .totals p > span:first-child {
+    min-width: 0;
+    padding-inline-start: 0;
+  }
+  .pick {
+    display: flex;
+    gap: 6px;
+    align-items: center;
   }
 </style>

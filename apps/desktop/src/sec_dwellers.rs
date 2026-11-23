@@ -249,7 +249,12 @@ fn list(app: &mut App, ui: &mut egui::Ui, all: &[Row], c: &style::Colors) {
     });
     ui.separator();
     if shown.is_empty() {
-        ui.label(RichText::new(app.t("c.noResults")).color(c.muted));
+        let text = if all.is_empty() {
+            app.t("dw.emptyVault")
+        } else {
+            app.t("c.noResults")
+        };
+        ui.label(RichText::new(text).color(c.muted));
         return;
     }
     let row_h = 44.0;

@@ -54,6 +54,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             Modal::Review => review(app, ui),
             Modal::Settings => settings(app, ui),
             Modal::About => about(app, ui),
+            Modal::Help => help(app, ui),
             Modal::Journal => journal(app, ui),
             Modal::ExpertConfirm => expert_confirm(app, ui),
             Modal::CloseConfirm(after) => close_confirm(app, ui, after.clone()),
@@ -115,6 +116,36 @@ fn danger(ui: &mut egui::Ui, text: &str) -> bool {
             .stroke(egui::Stroke::new(1.0, c.danger)),
     )
     .clicked()
+}
+
+pub const HELP_EN: &str = include_str!("../help/help.en.md");
+pub const HELP_RU: &str = include_str!("../help/help.ru.md");
+
+fn help(app: &mut App, ui: &mut egui::Ui) -> Outcome {
+    title(ui, icons::HELP, &app.t("tb.help"));
+    let text = if app.lang == Lang::Ru {
+        HELP_RU
+    } else {
+        HELP_EN
+    };
+    // The document's own first heading repeats the dialog title.
+    let text = text.split_once('\n').map_or(text, |(_, rest)| rest);
+    let screen = ui.ctx().content_rect();
+    let max_h = (screen.height() * 0.7).max(240.0);
+    let w = (screen.width() - 120.0).clamp(280.0, 700.0);
+    egui::ScrollArea::vertical()
+        .max_height(max_h)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.set_width(w);
+            crate::widgets::markdown(ui, text);
+        });
+    ui.add_space(8.0);
+    if primary(ui, &app.t("c.close")) {
+        Outcome::Close
+    } else {
+        Outcome::Keep
+    }
 }
 
 fn privacy(app: &App) -> &'static str {

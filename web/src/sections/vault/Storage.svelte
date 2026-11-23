@@ -113,8 +113,8 @@
       <li>
         <Check checked={ui.st.selected.has(r.key)} label="" aria={r.name} onchange={(v) => toggle(r.key, v)} />
         <span class="kind" title={app.t(`it.kind.${r.kind}`)}><Icon name={icons[r.kind]} /></span>
-        <span class="name">
-          <ItemCard kind={r.kind} id={r.id} />
+        <span class="name"><ItemCard kind={r.kind} id={r.id} /></span>
+        <span class="meta">
           {#if !r.info}<span class="warn small">{app.t("c.unknownItem")}</span>{/if}
           {#if r.rarity}<span class="muted small">{rarityName(r.rarity, app.ru)}</span>{/if}
           {#if app.expert}<CopyId id={r.id} />{/if}
@@ -141,11 +141,15 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
+    display: grid;
+    grid-template-columns: auto auto minmax(0, max-content) max-content max-content auto 1fr;
+    column-gap: var(--s-md);
   }
   .items li {
-    display: flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    gap: var(--s-sm);
     padding: 4px var(--s-sm);
     border-bottom: 1px solid var(--border);
     min-height: 40px;
@@ -155,14 +159,19 @@
   }
   .kind {
     color: var(--muted);
+    display: flex;
   }
   .name {
-    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .meta {
     display: flex;
-    flex-wrap: wrap;
     gap: 2px 8px;
     align-items: baseline;
-    min-width: 0;
+  }
+  .count {
+    text-align: end;
   }
   .warn {
     color: var(--warning);
@@ -170,6 +179,24 @@
   .actions {
     display: flex;
     gap: 2px;
+  }
+  @media (max-width: 640px) {
+    .items {
+      display: block;
+    }
+    .items li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px var(--s-sm);
+    }
+    .name {
+      flex: 1;
+    }
+    .meta {
+      flex-basis: 100%;
+      order: 5;
+      padding-inline-start: 56px;
+    }
   }
   .empty {
     padding: var(--s-lg) 0;
