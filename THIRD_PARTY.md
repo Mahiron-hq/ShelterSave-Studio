@@ -37,7 +37,6 @@ Used only to build and check it:
 - adler2 2.0.1 — 0BSD OR MIT OR Apache-2.0
 - aes 0.8.4 — MIT OR Apache-2.0
 - ahash 0.8.12 — MIT OR Apache-2.0
-- android_system_properties 0.1.6 — MIT OR Apache-2.0
 - android-activity 0.6.1 — MIT OR Apache-2.0
 - android-properties 0.2.2 — MIT
 - arboard 3.7.0 — MIT OR Apache-2.0
@@ -77,6 +76,7 @@ Used only to build and check it:
 - bumpalo 3.20.4 — MIT OR Apache-2.0
 - bytemuck 1.25.2 — Zlib OR Apache-2.0 OR MIT
 - bytemuck_derive 1.12.1 — Zlib OR Apache-2.0 OR MIT
+- byteorder 1.5.0 — Unlicense OR MIT
 - byteorder-lite 0.1.0 — Unlicense OR MIT
 - bytes 1.12.1 — MIT
 - calloop 0.13.0 — MIT
@@ -88,7 +88,6 @@ Used only to build and check it:
 - cfg_aliases 0.2.2 — MIT
 - cfg-if 1.0.5 — MIT OR Apache-2.0
 - cgl 0.3.2 — MIT / Apache-2.0
-- chrono 0.4.45 — MIT OR Apache-2.0
 - cipher 0.4.4 — MIT OR Apache-2.0
 - clipboard-win 5.4.3 — BSL-1.0
 - codespan-reporting 0.13.1 — Apache-2.0
@@ -96,7 +95,7 @@ Used only to build and check it:
 - combine 4.6.9 — MIT
 - concurrent-queue 2.5.0 — Apache-2.0 OR MIT
 - const-oid 0.10.3 — Apache-2.0 OR MIT
-- cookie 0.18.2 — MIT OR Apache-2.0
+- cookie 0.18.3 — MIT OR Apache-2.0
 - cookie_store 0.22.1 — MIT OR Apache-2.0
 - core-foundation 0.9.4 — MIT OR Apache-2.0
 - core-foundation-sys 0.8.7 — MIT OR Apache-2.0
@@ -154,7 +153,7 @@ Used only to build and check it:
 - foreign-types 0.5.0 — MIT/Apache-2.0
 - foreign-types-macros 0.2.4 — MIT/Apache-2.0
 - foreign-types-shared 0.3.1 — MIT/Apache-2.0
-- form_urlencoded 1.2.2 — MIT OR Apache-2.0
+- form_urlencoded 1.2.3 — MIT OR Apache-2.0
 - futures-core 0.3.34 — MIT OR Apache-2.0
 - futures-io 0.3.34 — MIT OR Apache-2.0
 - futures-lite 2.6.1 — Apache-2.0 OR MIT
@@ -189,8 +188,6 @@ Used only to build and check it:
 - hybrid-array 0.4.15 — MIT OR Apache-2.0
 - hyper 1.12.0 — MIT
 - hyper-util 0.1.21 — MIT
-- iana-time-zone 0.1.65 — MIT OR Apache-2.0
-- iana-time-zone-haiku 0.1.2 — MIT OR Apache-2.0
 - icu_collections 2.4.0 — Unicode-3.0
 - icu_locale_core 2.4.0 — Unicode-3.0
 - icu_normalizer 2.4.0 — Unicode-3.0
@@ -207,6 +204,11 @@ Used only to build and check it:
 - inout 0.1.4 — MIT OR Apache-2.0
 - itertools 0.15.0 — MIT OR Apache-2.0
 - itoa 1.0.19 — MIT OR Apache-2.0
+- jiff 0.2.46 — Unlicense OR MIT
+- jiff-core 0.1.8 — Unlicense OR MIT
+- jiff-static 0.2.46 — Unlicense OR MIT
+- jiff-tzdb 0.1.10 — Unlicense OR MIT
+- jiff-tzdb-platform 0.1.3 — Unlicense OR MIT
 - jni 0.22.4 — MIT OR Apache-2.0
 - jni-macros 0.22.4 — MIT OR Apache-2.0
 - jni-sys 0.3.1 — MIT OR Apache-2.0
@@ -238,6 +240,7 @@ Used only to build and check it:
 - miniz_oxide 0.9.1 — MIT OR Zlib OR Apache-2.0
 - mio 1.2.5 — MIT
 - moxcms 0.8.1 — BSD-3-Clause OR Apache-2.0
+- mslnk 0.1.8 — MIT
 - naga 30.0.2 — MIT OR Apache-2.0
 - naga-types 30.0.2 — MIT OR Apache-2.0
 - ndk 0.9.0 — MIT OR Apache-2.0
@@ -411,7 +414,7 @@ Used only to build and check it:
 - untrusted 0.9.0 — ISC
 - ureq 3.5.2 — MIT OR Apache-2.0
 - ureq-proto 0.7.1 — MIT OR Apache-2.0
-- url 2.5.8 — MIT OR Apache-2.0
+- url 2.5.9 — MIT OR Apache-2.0
 - utf_types 1.0.0 — Apache-2.0 OR MIT
 - utf8_iter 1.1.0 — Apache-2.0 OR MIT
 - utf8-zero 0.8.1 — MIT OR Apache-2.0
@@ -475,6 +478,8 @@ Used only to build and check it:
 - windows-threading 0.2.1 — MIT OR Apache-2.0
 - winit 0.30.13 — Apache-2.0
 - winnow 1.0.5 — MIT
+- winreg 0.56.0 — MIT
+- winresource 0.1.34 — MIT
 - wit-bindgen 0.57.1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 - wl-clipboard-rs 0.9.5 — MIT OR Apache-2.0
 - writeable 0.6.4 — Unicode-3.0

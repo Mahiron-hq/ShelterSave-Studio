@@ -4,17 +4,16 @@
 
 # ShelterSave-Studio
 
-**Редактор сохранений Fallout Shelter для ПК и браузера**
+**Редактор сохранений Fallout Shelter для Windows, Linux, macOS и браузера**
 <br>
-**Fallout Shelter save editor for desktop and the web**
+**Fallout Shelter save editor for Windows, Linux, macOS and the web**
 
 [![Release](https://img.shields.io/github/v/release/Mahiron-hq/ShelterSave-Studio?style=flat-square)](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Mahiron-hq/ShelterSave-Studio/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/Mahiron-hq/ShelterSave-Studio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Web-555?style=flat-square)](#установка)
-[![Rust](https://img.shields.io/badge/Rust-1.95%2B-B7410E?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
-### [⬇️ Скачать / Download](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest) · [🌐 Веб-версия / Web version](https://shelter.mahiron.online)
+### [Скачать / Download](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest) · [Открыть в браузере / Open in browser](https://shelter.mahiron.online)
 
 **[Русский](#русский)** · **[English](#english)**
 
@@ -24,7 +23,11 @@
 
 ## Русский
 
-ShelterSave-Studio открывает файл сохранения Fallout Shelter, показывает всё, что в нём есть, и позволяет это изменить: ресурсы, комнаты, жителей, задания, пустошь, происшествия и многое другое. Есть ПК-версия для Windows, Linux и macOS и [веб-версия](https://shelter.mahiron.online/ru/) с тем же редактором. Обе версии дают одинаковый файл после одинаковых правок.
+ShelterSave-Studio — редактор файлов сохранения Fallout Shelter. Он показывает всё, что хранится в сохранении, и позволяет изменить любую часть убежища: ресурсы, склад, комнаты, жителей, питомцев, задания, отряды в пустоши, происшествия и таймеры.
+
+Главная задача редактора — менять сохранение так, чтобы игра загружала его без ошибок. Для этого он опирается на данные и код самой игры: знает допустимые значения, правила постройки комнат и связи между частями файла, а перед записью проверяет сохранение на ошибки, из-за которых игра вылетает или зависает.
+
+Редактор доступен в двух вариантах с одинаковыми возможностями: программа для Windows, Linux и macOS и [сайт](https://shelter.mahiron.online/ru/), который работает в браузере без установки.
 
 ![Перестановка комнаты на карте убежища](docs/screenshots/ru-rooms.webp)
 
@@ -33,118 +36,152 @@ ShelterSave-Studio открывает файл сохранения Fallout Shel
 | ![Комнаты, светлая тема](docs/screenshots/ru-rooms-light.webp) | ![Комнаты, тёмная тема](docs/screenshots/ru-rooms-dark.webp) |
 | ![Жители, светлая тема](docs/screenshots/ru-dwellers-light.webp) | ![Жители, тёмная тема](docs/screenshots/ru-dwellers-dark.webp) |
 
-### Возможности
+### Содержание
 
-- **Всё содержимое сохранения:** ресурсы и ящики, склад, комнаты, темы, чертежи и рецепты, жители, внешность, снаряжение, питомцы, Мистер Помощник, семьи и дети, задания и цели, достижения, пустошь, происшествия, события и таймеры.
-- **Карта убежища.** Комнату можно перетащить мышью, объединить, разделить, скопировать, построить новую, убрать или поставить завалы. Редактор проверяет, что комната помещается и связана с лифтом.
-- **Проверка целостности.** Перед записью редактор ищет то, из-за чего игра падает или зависает, например мастерскую не того размера или неоткрытую комнату, и предлагает исправить.
-- **Отмена и повтор любой правки,** журнал правок и список всех изменений перед записью.
-- **Файл не меняется без нужды.** Сохранение без правок совпадает с исходным побайтно: числа, порядок ключей и неизвестные поля остаются как были.
-- **Обычный и экспертный режим.** В обычном режиме значения не выходят за пределы, которые принимает игра. Экспертный режим открывает любой ключ файла и дерево JSON.
-- **Картинки и фразы из вашей игры.** Предметы, комнаты, темы, житель в полный рост и дневник отряда в пустоши. В редакторе нет файлов игры: ПК-версия читает их из установленной игры, сайт — из файла игры, который вы выберете сами.
-- **Происшествия:** пожар или нашествие в нужной комнате, сила, завершение, пауза случайных происшествий.
-- **Задания и цели:** заменить, выполнить, изменить сложность, забыть пройденные задания. Достижения с прогрессом.
-- **Дети и семьи:** будущие дети (редкость, близнецы, цвета), беременность, партнёры, предки.
-- **Перенос жителя из другого сохранения,** легендарные жители и питомцы из журнала игры.
-- **ПК-версия** сама находит сохранения, делает резервные копии, замечает, что игра сохранила файл, восстанавливает правки после сбоя и не выходит в сеть.
-- **Интерфейс на русском и английском,** названия предметов из официальной русской локализации игры. Светлая и тёмная темы.
+- [Почему ShelterSave-Studio](#почему-sheltersave-studio)
+- [Сравнение с другими редакторами](#сравнение-с-другими-редакторами)
+- [Что можно изменить](#что-можно-изменить)
+- [Установка](#установка)
+- [Как пользоваться](#как-пользоваться)
+- [Ограничения](#ограничения)
+- [Конфиденциальность, лицензия и права](#конфиденциальность)
 
-#### Чем он отличается от других редакторов
+### Почему ShelterSave-Studio
 
-Сведения о других редакторах взяты из их страниц и репозиториев (ноябрь 2026).
+#### 1. Сохранение остаётся рабочим
 
-- **[Shelter Editor](https://github.com/rakion99/shelter-editor)** (rakion99, браузер). Ресурсы, режим и тема убежища, массовые действия (убрать камни, открыть все комнаты и рецепты, SPECIAL на максимум, вылечить всех), имя, пол, здоровье, уровень, цвет кожи и волос, снаряжение жителей, отряды в пустоши. Отдельные комнаты, задания и питомцы не редактируются.
-- **[Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor)** (devvyyxyz, браузер). Ресурсы, жители с внешностью и SPECIAL, склад, список комнат и просмотр планировки, отряды, сезонный пропуск, рецепты, темы, история изменений, проверка файла. По списку планов авторов пока нет отмены правок, редактора заданий, питомцев, детей, происшествий и карты планировки.
-- **[FSSE](https://github.com/robot9706/FSSE)** (robot9706, Windows и Android). Репозиторий в архиве с 2020 года, программа не обновляется.
-- **[FOSE](https://github.com/goobycorp/fose)** (GoobyCorp). Скрипт командной строки: расшифровывает и зашифровывает файл, править JSON нужно вручную.
+Неправильная правка сохранения часто приводит не к ошибке в редакторе, а к вылету или зависанию игры при загрузке, причём уже после того, как файл перезаписан. ShelterSave-Studio защищает от этого на нескольких уровнях.
 
-Только в ShelterSave-Studio: карта убежища с перестановкой комнат мышью, проверка целостности по коду игры, побайтно точная запись, отмена любой правки, пределы значений из данных игры, картинки и внешность жителей из вашей игры, происшествия, задания и цели, будущие дети, перенос жителей между сохранениями, расшифрованный дневник отряда.
+- **Правила взяты из самой игры.** Справочник редактора собран из данных и кода Fallout Shelter 2.7: все предметы, комнаты, задания, цели и достижения, допустимые размеры и уровни каждой комнаты, пределы характеристик, формулы здоровья и производства. Значения не угаданы и не переписаны с вики.
+- **Обычный режим не даёт записать недопустимое значение.** Уровень жителя — от 1 до 50, характеристики S.P.E.C.I.A.L. — от 1 до 10, жителей — не больше 200, ресурсы — в пределах, которые принимает игра. Комнату нельзя поставить поверх другой, оторвать от лифта или построить в размере, которого нет в игре.
+- **Связанные данные меняются вместе, как в игре.** При повышении уровня пересчитывается максимальное здоровье с учётом выносливости. Надетый питомец получает всё, что игра для него создаёт. Убранный житель исчезает из комнат, отрядов и списков заданий.
+- **Проверка целостности перед записью.** Редактор проверяет файл по 25 правилам, найденным в коде игры, и большинство ошибок исправляет одной кнопкой. Примеры: построена комната, которую игра ещё не открыла в книге чертежей (вылет при загрузке); мастерская или парикмахерская не того размера (игра зависает); житель числится в двух комнатах; питомец принадлежит несуществующему жителю; число ящиков не совпадает со списком. Проверка работает с любым файлом, в том числе изменённым другими редакторами.
+- **Файл не меняется сверх того, что вы изменили.** Редактор хранит сохранение в исходном виде: запись чисел, порядок ключей, неизвестные ему поля и экранирование символов остаются такими, какими их записала игра. Если ничего не менять, записанный файл совпадёт с исходным до байта. Другие браузерные редакторы заново собирают весь файл через `JSON.stringify`, из-за чего меняются и те части, которых вы не касались.
+- **Всё можно проверить и отменить.** Любую правку можно отменить и повторить, журнал показывает все действия по порядку. Перед записью открывается список изменений в формате «было → стало» с понятными названиями мест в файле. ПК-версия перед записью делает резервную копию исходного файла.
+
+#### 2. Изменить можно всё, а не только ресурсы
+
+Большинство редакторов ограничиваются ресурсами, характеристиками жителей и кнопками «открыть всё». ShelterSave-Studio работает со всем содержимым сохранения, в том числе с частями, которые больше нигде не редактируются: карта убежища, задания и ежедневные цели, достижения, будущие дети, происшествия, добыча и дневник отрядов в пустоши, таймеры событий. Полный список — в разделе [«Что можно изменить»](#что-можно-изменить). Для того, чего нет в интерфейсе, есть экспертный режим с доступом к любому ключу файла.
+
+#### 3. Наглядно и понятно
+
+- **Карта убежища.** Комнаты видны так же, как в игре. Комнату можно перетащить мышью, объединить, разделить, скопировать, построить новую и убрать завалы; редактор сразу показывает, где комната помещается.
+- **Картинки из вашей игры.** Значки предметов, изображения комнат и тем, житель в полный рост в своей одежде, причёске и с питомцем, фразы дневника отряда. Редактор не содержит файлов игры: он читает их из установленной у вас игры.
+- **Пояснение к каждому полю.** Что значит параметр, как его использует игра и какие значения допустимы. Названия предметов, комнат и заданий совпадают с официальной русской локализацией.
+- **Поиск по всему сохранению:** разделы, жители, предметы. Ctrl+F в ПК-версии, Ctrl+K на сайте.
+- **Массовые действия** над выбранными жителями: уровень, S.P.E.C.I.A.L. на максимум, здоровье, радиация, счастье, снаряжение.
+
+#### 4. Две версии — один результат
+
+ПК-версия и сайт построены на одном ядре, поэтому дают одинаковый файл после одинаковых правок.
+
+- **ПК-версия** работает без интернета, сама находит сохранения, делает резервные копии, замечает, когда игра записала файл, и предлагает загрузить новую версию с переносом ваших правок. Если программа закрылась аварийно, несохранённые правки восстанавливаются при следующем запуске.
+- **Сайт** не требует установки. Файл расшифровывается и изменяется только в вашем браузере и никуда не отправляется.
+
+#### 5. Открытый код и уважение к данным
+
+Исходный код открыт под лицензией GPL-3.0. ПК-версия не выполняет ни одного сетевого запроса. Сайт не использует cookie и не собирает персональных данных; анонимный подсчёт посещений можно отключить.
+
+### Сравнение с другими редакторами
+
+Сравнение составлено по исходному коду и описаниям редакторов в ноябре 2026 года. «Частично» означает, что возможность есть в упрощённом виде, подробности указаны в ячейке.
+
+| Возможность | ShelterSave-Studio | [Shelter Editor](https://github.com/rakion99/shelter-editor) | [Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor) |
+|---|---|---|---|
+| Где работает | Windows, Linux, macOS, браузер | Браузер | Браузер |
+| Последнее обновление | 2026 | 2019 | 2026 |
+| Язык интерфейса | Русский, английский | Английский | Английский |
+| Ресурсы | Да | Да | Да |
+| Склад: добавить и убрать предметы | Да | Нет | Да |
+| Комнаты | Карта: перемещение, объединение, разделение, постройка, копирование, завалы | Только убрать все завалы | Список и схема; размер можно менять числом |
+| Темы комнат | Выбор темы для каждого типа комнаты, детали тем | Открыть все сразу | Открыть все сразу |
+| Рецепты | По одному | Все сразу | По одному |
+| Характеристики S.P.E.C.I.A.L. | Каждая отдельно | Только «всё на максимум» | Каждая отдельно |
+| Внешность жителя | Причёска, борода и маски, цвета кожи, волос и одежды, предпросмотр | Цвет кожи и волос | Причёска, цвет кожи и волос |
+| Питомцы | Надеть, снять, бонус, имя | Нет | Нет |
+| Мистер Помощник | Имя, здоровье, ремонт, сбор ресурсов | Только количество в ящиках | Только количество в ящиках |
+| Беременность и дети | Беременность, будущие дети (редкость, близнецы, цвета), партнёры | Только отметки беременности | Только отметки беременности |
+| Задания, ежедневные цели, достижения | Да | Нет | Нет |
+| Отряды в пустоши | Состав, время, снаряжение, добыча, дневник | Время и снаряжение | Статус и отзыв отряда |
+| Происшествия | Начать в нужной комнате, сила, завершить, пауза случайных | Завершить все | Завершить все |
+| Перенос жителя из другого сохранения | Да | Нет | Нет |
+| Легендарные жители и питомцы из журнала | Да | Нет | Нет |
+| Отмена и повтор правок | Да | Нет | Нет |
+| Список изменений перед записью | Да, «было → стало» | Нет | Отметки у изменённых полей и журнал |
+| Проверка файла | 25 правил из кода игры, с исправлением | Только проверка, что файл читается | Наличие основных разделов, без исправления |
+| Пределы значений из данных игры | Да | Нет | Частично |
+| Неизменённые части файла остаются как были | Да | Нет, файл собирается заново | Нет, файл собирается заново |
+| Картинки из игры | Да, из вашей копии игры | Нет | Нет |
+| Резервные копии | На диске, перед каждой записью | Нет | В памяти страницы, до перезагрузки |
+| Лицензия | GPL-3.0 | AGPL-3.0 | Не указана |
+
+Ещё два известных проекта не включены в таблицу: [FSSE](https://github.com/robot9706/FSSE) (Windows и Android) находится в архиве с 2020 года и не обновляется, а [FOSE](https://github.com/goobycorp/fose) — скрипт командной строки, который только расшифровывает и зашифровывает файл; содержимое нужно править вручную.
+
+### Что можно изменить
+
+- **Убежище:** название и номер, ресурсы, ящики, Мистер Помощник и переноски питомцев, склад с поиском и фильтрами.
+- **Комнаты:** карта убежища, тип, размер, уровень, тема, разрушения и обесточивание, производство и запас ресурсов, таймеры тренировок, крафта и радиостудии.
+- **Чертежи и журнал:** изучение комнат, рецепты оружия, брони и тем, отметка «просмотрено», завершение коллекции.
+- **Жители:** имя, пол, уровень, опыт, S.P.E.C.I.A.L., здоровье, радиация, счастье, редкость, внешность с предпросмотром, оружие, одежда и головной убор, питомец, комната, партнёр, родители и предки, возвращение погибших.
+- **Семьи:** беременность и время до родов, будущие дети, дети и время до взросления.
+- **Пустошь:** отряды, их время, здоровье, стимуляторы и антирадин, найденные предметы и детали тем, дневник отряда.
+- **Задания и цели:** текущие, ежедневные и еженедельные задания, замена и выполнение целей, сложность, история пройденных заданий, достижения с прогрессом.
+- **События:** происшествия в комнатах, пауза случайных происшествий, Незнакомец, когти смерти, Ботл и Кэппи, беженцы, ежедневный отчёт убежища.
+- **Экспертный режим:** дерево JSON с доступом к любому ключу, экспорт и импорт расшифрованного JSON.
 
 ### Установка
 
-Все файлы лежат на странице [последнего выпуска](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest). Контрольные суммы SHA-256 — в файле `SHA256SUMS.txt` там же.
+Все файлы находятся на странице [последнего выпуска](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest).
 
-| Система | Файл |
+| Система | Какой файл скачать |
 |---|---|
-| Windows 10 и 11 (x64) | `ShelterSave-Studio-1.0.0-windows-x64-setup.exe` — установщик; `…-windows-x64-portable.exe` — работает без установки |
-| Linux (x64) | `…-linux-x64.AppImage`, `…-linux-x64.deb` (Debian, Ubuntu), `…-linux-x64.rpm` (Fedora, openSUSE) |
-| macOS 11 и новее, Apple Silicon | `…-macos-arm64.dmg` или `…-macos-arm64.zip` |
+| Windows 10 и 11 (x64) | `ShelterSave-Studio-1.0.0-windows-x64-setup.exe` — установщик; `ShelterSave-Studio-1.0.0-windows-x64-portable.exe` — работает без установки |
+| Linux (x64) | `…-linux-x64.AppImage` — любой дистрибутив; `…-linux-x64.deb` — Debian, Ubuntu, Mint; `…-linux-x64.rpm` — Fedora, openSUSE |
+| macOS 11 и новее, Apple Silicon (M1 и новее) | `…-macos-arm64.dmg` или `…-macos-arm64.zip` |
 | macOS 11 и новее, Intel | `…-macos-x64.dmg` или `…-macos-x64.zip` |
-| Любой современный браузер | [shelter.mahiron.online](https://shelter.mahiron.online/ru/), установка не нужна |
+| Браузер | Скачивать ничего не нужно: [shelter.mahiron.online](https://shelter.mahiron.online/ru/) |
 
-- **Windows.** Установщик ставит программу только для текущего пользователя, права администратора не нужны. Он создаёт ярлыки, может связать файлы `.sav` с программой и удаляется через «Параметры → Приложения».
-- **Linux.** `.deb`: `sudo apt install ./ShelterSave-Studio-1.0.0-linux-x64.deb`; `.rpm`: `sudo dnf install ./ShelterSave-Studio-1.0.0-linux-x64.rpm`; AppImage: `chmod +x` и запуск.
-- **macOS.** Откройте `.dmg` и перетащите программу в «Программы» или распакуйте `.zip`.
+- **Windows.** Установщик ставит программу для текущего пользователя и не требует прав администратора. Он создаёт ярлыки, по желанию связывает файлы `.sav` с программой и удаляется через «Параметры → Приложения».
+- **Linux.** `.deb`: `sudo apt install ./ShelterSave-Studio-1.0.0-linux-x64.deb`. `.rpm`: `sudo dnf install ./ShelterSave-Studio-1.0.0-linux-x64.rpm`. AppImage: разрешите запуск (`chmod +x`) и откройте файл.
+- **macOS.** Откройте `.dmg` и перетащите программу в папку «Программы» либо распакуйте `.zip`.
 
-Проверка файла: `Get-FileHash -Algorithm SHA256 <файл>` в PowerShell или `sha256sum <файл>` в Linux и macOS. Результат должен совпасть со строкой в `SHA256SUMS.txt`.
+#### Если система предупреждает о неизвестном издателе
 
-#### Предупреждение о неподписанной программе
-
-Сборки не подписаны платным сертификатом разработчика, поэтому система предупредит о неизвестном издателе. Это ожидаемо; целостность файла проверяется по контрольной сумме.
+Программа не подписана платным сертификатом разработчика, поэтому Windows и macOS при первом запуске покажут предупреждение. Это ожидаемо. Убедиться, что файл не подменён, можно по контрольной сумме из `SHA256SUMS.txt` на странице выпуска: `Get-FileHash -Algorithm SHA256 <файл>` в PowerShell или `sha256sum <файл>` в Linux и macOS.
 
 - **Windows (SmartScreen):** нажмите «Подробнее», затем «Выполнить в любом случае».
-- **macOS 15 и новее:** при первом запуске появится сообщение, что программу не удалось проверить. Закройте его, откройте «Системные настройки → Конфиденциальность и безопасность», внизу нажмите «Всё равно открыть» и подтвердите паролем. На macOS 11–14 достаточно открыть программу через правую кнопку мыши → «Открыть». Вместо этого можно выполнить в Терминале: `xattr -dr com.apple.quarantine /Applications/ShelterSave-Studio.app`.
+- **macOS 15 и новее:** закройте сообщение о том, что программу не удалось проверить, откройте «Системные настройки → Конфиденциальность и безопасность», внизу нажмите «Всё равно открыть» и подтвердите паролем. На macOS 11–14: щёлкните программу правой кнопкой мыши и выберите «Открыть». Другой способ — команда в Терминале: `xattr -dr com.apple.quarantine /Applications/ShelterSave-Studio.app`.
 
 ### Как пользоваться
 
-1. **Закройте игру.** Запущенная игра запишет своё состояние поверх изменённого файла.
-2. **Откройте сохранение.** ПК-версия сама показывает найденные убежища. На сайте перетащите файл на страницу или нажмите «Выбрать файл». В игре три ячейки, поэтому файлы всегда называются `Vault1.sav`, `Vault2.sav` и `Vault3.sav`.
-   - Windows, Steam и Bethesda.net: `%LOCALAPPDATA%\FalloutShelter`.
-   - Linux, Steam через Proton: `~/.steam/steam/steamapps/compatdata/588430/pfx/drive_c/users/steamuser/AppData/Local/FalloutShelter`.
-   - Android: `Android/data/com.bethsoft.falloutshelter/files` (на Android 11 и новее — через компьютер по USB).
-3. **Измените то, что нужно.** У каждого пункта есть пояснение: наведите указатель на знак вопроса. Поиск по пунктам, жителям и предметам — Ctrl+K.
-4. **Запишите файл.** Редактор покажет все изменения и проверит файл. ПК-версия перед первой записью делает резервную копию и записывает файл на место. Сайт отдаёт файл для скачивания: положите его в папку сохранений под тем же именем вместо старого.
-5. **Запустите игру.** Если игра синхронизирует сохранения через облако, отключите синхронизацию на время правки, иначе облачная копия может заменить ваш файл.
+1. **Закройте игру.** Запущенная игра при выходе запишет своё состояние поверх изменённого файла.
+2. **Откройте сохранение.** ПК-версия сама показывает найденные убежища. На сайте перетащите файл на страницу или нажмите «Выбрать файл». Где лежат сохранения:
+   - Windows (Steam и Bethesda.net): `%LOCALAPPDATA%\FalloutShelter`;
+   - Linux (Steam, Proton): `~/.steam/steam/steamapps/compatdata/588430/pfx/drive_c/users/steamuser/AppData/Local/FalloutShelter`;
+   - Android: `Android/data/com.bethsoft.falloutshelter/files` (на Android 11 и новее папка доступна только с компьютера по USB).
+3. **Внесите изменения.** Наведите указатель на знак вопроса рядом с полем, чтобы прочитать пояснение.
+4. **Запишите файл.** Редактор покажет все изменения и результат проверки. ПК-версия записывает файл на место, предварительно сделав резервную копию. Сайт предлагает скачать файл: положите его в папку сохранений вместо старого.
+5. **Запустите игру.** Если сохранения синхронизируются через облако, на время правки отключите синхронизацию, иначе облачная копия может заменить ваш файл.
+
+**Имена файлов.** В игре три ячейки сохранения, и она загружает только файлы `Vault1.sav`, `Vault2.sav` и `Vault3.sav`. Редактор открывает файл с любым именем, например резервную копию, но перед запуском игры файл должен лежать в папке сохранений под именем нужной ячейки.
 
 Подробная справка: [shelter.mahiron.online/ru/help/](https://shelter.mahiron.online/ru/help/).
 
-### Сборка из исходников
-
-Нужен [Rust](https://www.rust-lang.org/) 1.95 или новее. В Linux также нужны `libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxcb1-dev`.
-
-```sh
-git clone https://github.com/Mahiron-hq/ShelterSave-Studio
-cd ShelterSave-Studio
-cargo run --release -p shelter-save-studio      # ПК-версия
-cargo test --workspace                           # тесты
-```
-
-Веб-версия и сервер сайта дополнительно требуют Node.js 24, цель `wasm32-unknown-unknown`, `wasm-bindgen-cli` 0.2.130 и `wasm-opt` из [binaryen](https://github.com/WebAssembly/binaryen) (путь к нему — в переменной `WASM_OPT`):
-
-```sh
-rustup target add wasm32-unknown-unknown
-cargo install --locked wasm-bindgen-cli --version 0.2.130
-cd web && npm ci && npm run build && cd ..        # сайт в web/dist
-cargo build --release -p shelter-site            # сервер со встроенным сайтом
-```
-
-Установщик для Windows собирается из готовой программы: укажите полный путь к ней в `SHELTER_PAYLOAD` и выполните `cargo build --release -p shelter-save-studio-setup`. Установка сервера на Debian описана в [deploy/INSTALL.ru.md](deploy/INSTALL.ru.md).
-
-### Как это устроено
-
-- `crates/core` — общее ядро: расшифровка и шифрование (AES-256-CBC, [описание формата](docs/SAV_FORMAT.md)), JSON без потерь (числа и строки хранятся в исходном виде, порядок ключей и повторы сохраняются), действия с отменой, проверка целостности, правила игры и тексты интерфейса.
-- `data/catalog.json` — справочник, собранный из кода и данных игры: предметы, комнаты, задания, пределы значений. В нём нет картинок, только положения нужных частей в файлах игры и их контрольные суммы.
-- `crates/art` — чтение архивов Unity из установленной игры и отрисовка жителя по образцу шейдера игры.
-- `apps/desktop` — ПК-версия на [egui](https://github.com/emilk/egui). `apps/installer` — установщик для Windows.
-- `crates/wasm` и `web/` — то же ядро, собранное в WebAssembly, и интерфейс на Svelte. Файл обрабатывается только в браузере.
-- `apps/site` — сервер сайта: раздача страниц, анонимная статистика без cookie, сторож и Telegram-бот для владельца сайта.
-
 ### Ограничения
 
-- Редактор сделан для версии игры 2.7 на ПК (Steam, Bethesda.net); у Android-версии тот же формат файла. Сохранения с консолей и iOS не проверялись.
-- Игра видит только `Vault1.sav`, `Vault2.sav` и `Vault3.sav`; файлы с другими именами она не загружает.
-- Сайт не показывает картинки из игры, пока вы не выберете файл `FalloutShelter_Data/data.unity3d` своей ПК-игры. В версии для Android такого файла нет. Сайт не может сам найти сохранения, записать файл на место или заметить, что игра его сохранила: это умеет только ПК-версия.
-- Частота происшествий, гостей и волн беженцев задаётся настройками игры, а не сохранением, поэтому её нельзя изменить; редактируются только текущие таймеры и шансы.
+- Редактор рассчитан на версию игры 2.7 для ПК (Steam, Bethesda.net). Android-версия использует тот же формат файла. Сохранения консольных версий и iOS не проверялись.
+- Картинки игры в ПК-версии появляются, если игра установлена на этом компьютере. Сайт показывает их после того, как вы выберете файл `FalloutShelter_Data/data.unity3d` из папки ПК-версии игры; в Android-версии такого файла нет. Все остальные функции работают и без картинок.
+- Сайт, в отличие от ПК-версии, не может сам найти сохранения, записать файл на место или заметить, что игра его перезаписала: браузер не даёт сайтам доступа к папкам на диске.
+- Как часто случаются происшествия, приходят гости и беженцы, задаётся настройками игры, а не сохранением. Редактор меняет только текущие таймеры и шансы.
 - В предпросмотре жителя не рисуются большие головные уборы.
-- Сборки не подписаны сертификатом разработчика (см. «Установка»).
 
 ### Конфиденциальность
 
-ПК-версия не выполняет ни одного сетевого запроса. На сайте файл сохранения расшифровывается и изменяется только в браузере и никуда не отправляется; сайт не ставит cookie и считает посещения анонимно, подсчёт можно отключить. Полный текст: [PRIVACY.md](PRIVACY.md).
+ПК-версия не выходит в интернет. На сайте файл сохранения обрабатывается только в браузере и не передаётся на сервер. Сайт не ставит cookie и считает посещения анонимно, подсчёт можно отключить. Подробно: [PRIVACY.md](PRIVACY.md).
 
 ### Отказ от ответственности
 
-Программа предоставляется «как есть», без каких-либо гарантий. Держите копию исходного файла: изменения сохранения на ваш риск.
+Программа предоставляется «как есть», без гарантий. Перед правкой сохраните копию исходного файла.
 
 ShelterSave-Studio — независимый проект с открытым кодом. Он не связан с ZeniMax Media Inc., Bethesda Softworks LLC, Bethesda Game Studios, Behaviour Interactive Inc. и Microsoft Corporation и не одобрен ими.
 
@@ -152,13 +189,17 @@ Fallout Shelter разработана Bethesda Game Studios при участи
 
 ### Лицензия
 
-GPL-3.0-or-later, см. [LICENSE](LICENSE). Лицензии сторонних компонентов: [THIRD_PARTY.md](THIRD_PARTY.md). Сообщить об уязвимости: [SECURITY.md](SECURITY.md). Изменения: [CHANGELOG.md](CHANGELOG.md).
+GPL-3.0-or-later, см. [LICENSE](LICENSE). Лицензии сторонних компонентов: [THIRD_PARTY.md](THIRD_PARTY.md). Сообщить об уязвимости: [SECURITY.md](SECURITY.md). История изменений: [CHANGELOG.md](CHANGELOG.md). Формат файла сохранения описан в [docs/SAV_FORMAT.md](docs/SAV_FORMAT.md), установка сервера сайта — в [deploy/INSTALL.ru.md](deploy/INSTALL.ru.md).
 
 ---
 
 ## English
 
-ShelterSave-Studio opens a Fallout Shelter save file, shows everything in it and lets you change it: resources, rooms, dwellers, quests, the wasteland, incidents and much more. There is a desktop version for Windows, Linux and macOS and a [web version](https://shelter.mahiron.online/en/) with the same editor. Both give the same file after the same edits.
+ShelterSave-Studio is an editor for Fallout Shelter save files. It shows everything stored in a save and lets you change any part of the vault: resources, storage, rooms, dwellers, pets, quests, wasteland teams, incidents and timers.
+
+Its main goal is to change a save so that the game still loads it without errors. To do that it relies on the game's own data and code: it knows the allowed values, the room building rules and how the parts of the file depend on each other, and before writing it checks the save for problems that make the game crash or hang.
+
+The editor comes in two versions with the same features: a program for Windows, Linux and macOS, and a [website](https://shelter.mahiron.online/en/) that runs in the browser with nothing to install.
 
 ![Moving a room on the vault map](docs/screenshots/en-rooms.webp)
 
@@ -167,118 +208,152 @@ ShelterSave-Studio opens a Fallout Shelter save file, shows everything in it and
 | ![Rooms, light theme](docs/screenshots/en-rooms-light.webp) | ![Rooms, dark theme](docs/screenshots/en-rooms-dark.webp) |
 | ![Dwellers, light theme](docs/screenshots/en-dwellers-light.webp) | ![Dwellers, dark theme](docs/screenshots/en-dwellers-dark.webp) |
 
-### Features
+### Contents
 
-- **Everything in the save:** resources and lunchboxes, storage, rooms, themes, blueprints and recipes, dwellers, looks, equipment, pets, Mr. Handy, families and children, quests and objectives, achievements, the wasteland, incidents, events and timers.
-- **Vault map.** Drag a room with the mouse, merge, split, copy, build a new one, remove or place rocks. The editor checks that the room fits and is connected to an elevator.
-- **Integrity check.** Before writing, the editor looks for what makes the game crash or hang, such as a workshop of the wrong size or a room that is not unlocked yet, and offers a fix.
-- **Undo and redo for every edit,** an edit history and a list of all changes before writing.
-- **No needless changes.** A save written without edits is byte-identical to the original: numbers, key order and unknown fields are kept as they were.
-- **Normal and expert mode.** In normal mode values stay within what the game accepts. Expert mode opens every key of the file and the JSON tree.
-- **Pictures and phrases from your own game.** Items, rooms, themes, a full-height dweller and the wasteland team journal. The editor contains no game files: the desktop version reads them from the installed game, the website from a game file you pick yourself.
-- **Incidents:** a fire or an attack in a chosen room, its strength, ending it, pausing random incidents.
-- **Quests and objectives:** replace, complete, change difficulty, forget finished quests. Achievements with progress.
-- **Children and families:** future children (rarity, twins, colours), pregnancy, partners, ancestors.
-- **Moving a dweller from another save,** legendary dwellers and pets from the game's journal.
-- **The desktop version** finds your saves, makes backups, notices when the game has saved the file, recovers edits after a crash and never goes online.
-- **Russian and English interface,** item names from the game's official Russian localization. Light and dark themes.
+- [Why ShelterSave-Studio](#why-sheltersave-studio)
+- [Comparison with other editors](#comparison-with-other-editors)
+- [What you can edit](#what-you-can-edit)
+- [Installation](#installation)
+- [How to use](#how-to-use)
+- [Limitations](#limitations)
+- [Privacy, license and rights](#privacy)
 
-#### How it differs from other editors
+### Why ShelterSave-Studio
 
-Facts about other editors come from their pages and repositories (November 2026).
+#### 1. Your save keeps working
 
-- **[Shelter Editor](https://github.com/rakion99/shelter-editor)** (rakion99, browser). Resources, vault mode and theme, bulk actions (remove rocks, unlock all rooms and recipes, max SPECIAL, heal everyone), dweller name, gender, health, level, skin and hair colour, equipment, wasteland teams. Single rooms, quests and pets cannot be edited.
-- **[Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor)** (devvyyxyz, browser). Resources, dwellers with looks and SPECIAL, storage, room list and layout view, teams, season pass, recipes, themes, change history, file validation. According to its own roadmap it does not yet have undo, a quest editor, pets, children, incidents or a layout map.
-- **[FSSE](https://github.com/robot9706/FSSE)** (robot9706, Windows and Android). The repository has been archived since 2020 and is not updated.
-- **[FOSE](https://github.com/goobycorp/fose)** (GoobyCorp). A command-line script that decrypts and encrypts the file; the JSON has to be edited by hand.
+A wrong edit usually does not show up as an error in the editor. It shows up later as a crash or a hang when the game loads the file, after the file has already been overwritten. ShelterSave-Studio guards against this on several levels.
 
-Only in ShelterSave-Studio: a vault map with drag-and-drop rooms, an integrity check based on the game code, byte-exact writing, undo for every edit, value limits from the game data, pictures and dweller looks from your own game, incidents, quests and objectives, future children, moving dwellers between saves, the decoded team journal.
+- **The rules come from the game itself.** The editor's catalog is built from the data and code of Fallout Shelter 2.7: every item, room, quest, objective and achievement, the allowed sizes and levels of each room, stat limits, health and production formulas. Nothing is guessed or copied from a wiki.
+- **Normal mode does not let you write an invalid value.** Dweller level is 1 to 50, S.P.E.C.I.A.L. stats are 1 to 10, the vault holds at most 200 dwellers, resources stay within what the game accepts. A room cannot be placed over another one, cut off from the elevator or built in a size the game does not have.
+- **Linked data changes together, the way the game does it.** Levelling up recalculates maximum health with Endurance. An equipped pet gets everything the game creates for it. A removed dweller disappears from rooms, teams and quest lists.
+- **Integrity check before writing.** The editor checks the file against 25 rules found in the game code and fixes most problems with one button. Examples: a room is built that the game has not unlocked in the blueprint book yet (crash on load); a workshop or barbershop of the wrong size (the game hangs); a dweller listed in two rooms; a pet owned by a dweller who does not exist; the lunchbox count does not match the list. It works on any file, including one changed by other editors.
+- **The file changes only where you changed it.** The editor keeps the save exactly as it was read: number formatting, key order, fields it does not know and character escaping stay as the game wrote them. With no edits, the written file is byte-identical to the original. Other browser editors rebuild the whole file with `JSON.stringify`, which also changes parts you did not touch.
+- **Everything can be reviewed and undone.** Every edit can be undone and redone, and the history lists all actions in order. Before writing you see a list of changes as "before → after" with readable names of the places in the file. The desktop version backs up the original file before writing.
+
+#### 2. Edit everything, not just resources
+
+Most editors stop at resources, dweller stats and "unlock all" buttons. ShelterSave-Studio works with the whole save, including parts no other editor touches: the vault map, quests and daily objectives, achievements, future children, incidents, wasteland team loot and journal, event timers. The full list is in [What you can edit](#what-you-can-edit). For anything the interface does not cover there is expert mode with access to every key of the file.
+
+#### 3. Clear and visual
+
+- **Vault map.** Rooms look the way they do in the game. Drag a room with the mouse, merge, split, copy, build a new one or clear rocks; the editor shows right away where a room fits.
+- **Pictures from your own game.** Item icons, room and theme pictures, a full-height dweller in their outfit and hairstyle with their pet, wasteland journal phrases. The editor contains no game files: it reads them from the game installed on your computer.
+- **An explanation for every field.** What a setting means, how the game uses it and which values are allowed. Item, room and quest names match the official game localization.
+- **Search across the whole save:** sections, dwellers, items. Ctrl+F in the desktop version, Ctrl+K on the website.
+- **Bulk actions** on selected dwellers: level, max S.P.E.C.I.A.L., health, radiation, happiness, equipment.
+
+#### 4. Two versions, one result
+
+The desktop version and the website share one core, so the same edits give the same file.
+
+- **The desktop version** works offline, finds your saves, makes backups, notices when the game has written the file and offers to load the new version while keeping your edits. If the program closes unexpectedly, unsaved edits are restored on the next start.
+- **The website** needs no installation. The file is decrypted and edited only in your browser and is never uploaded.
+
+#### 5. Open source and respect for your data
+
+The source code is open under GPL-3.0. The desktop version makes no network requests at all. The website sets no cookies and collects no personal data; anonymous visit counting can be turned off.
+
+### Comparison with other editors
+
+Compiled from the source code and descriptions of the editors in November 2026. "Partly" means the feature exists in a simpler form; details are in the cell.
+
+| Feature | ShelterSave-Studio | [Shelter Editor](https://github.com/rakion99/shelter-editor) | [Wasteland Editor](https://github.com/devvyyxyz/wasteland-editor) |
+|---|---|---|---|
+| Runs on | Windows, Linux, macOS, browser | Browser | Browser |
+| Last update | 2026 | 2019 | 2026 |
+| Interface language | Russian, English | English | English |
+| Resources | Yes | Yes | Yes |
+| Storage: add and remove items | Yes | No | Yes |
+| Rooms | Map: move, merge, split, build, copy, rocks | Only remove all rocks | List and layout view; size can be typed in |
+| Room themes | Theme per room type, theme parts | Unlock all at once | Unlock all at once |
+| Recipes | One by one | All at once | One by one |
+| S.P.E.C.I.A.L. | Each stat separately | Only "max all" | Each stat separately |
+| Dweller looks | Hairstyle, beard and masks, skin, hair and outfit colours, preview | Skin and hair colour | Hairstyle, skin and hair colour |
+| Pets | Equip, remove, bonus, name | No | No |
+| Mr. Handy | Name, health, repair, collecting | Lunchbox count only | Lunchbox count only |
+| Pregnancy and children | Pregnancy, future children (rarity, twins, colours), partners | Pregnancy flags only | Pregnancy flags only |
+| Quests, daily objectives, achievements | Yes | No | No |
+| Wasteland teams | Members, time, gear, loot, journal | Time and gear | Status and recall |
+| Incidents | Start in a chosen room, strength, end, pause random ones | End all | End all |
+| Move a dweller from another save | Yes | No | No |
+| Legendary dwellers and pets from the journal | Yes | No | No |
+| Undo and redo | Yes | No | No |
+| List of changes before writing | Yes, "before → after" | No | Marks on changed fields and a log |
+| File check | 25 rules from the game code, with fixes | Only that the file can be read | Main sections present, no fixes |
+| Value limits from game data | Yes | No | Partly |
+| Untouched parts of the file stay as they were | Yes | No, the file is rebuilt | No, the file is rebuilt |
+| Game pictures | Yes, from your copy of the game | No | No |
+| Backups | On disk, before every write | No | In page memory, until reload |
+| License | GPL-3.0 | AGPL-3.0 | Not specified |
+
+Two more known projects are not in the table: [FSSE](https://github.com/robot9706/FSSE) (Windows and Android) has been archived since 2020 and is not updated, and [FOSE](https://github.com/goobycorp/fose) is a command-line script that only decrypts and encrypts the file; the contents have to be edited by hand.
+
+### What you can edit
+
+- **Vault:** name and number, resources, lunchboxes, Mr. Handy and pet carriers, storage with search and filters.
+- **Rooms:** vault map, type, size, level, theme, damage and power, production and stored output, training, crafting and radio timers.
+- **Blueprints and journal:** room unlocks, weapon, outfit and theme recipes, "seen" marks, completing the collection.
+- **Dwellers:** name, gender, level, experience, S.P.E.C.I.A.L., health, radiation, happiness, rarity, looks with a preview, weapon, outfit and hat, pet, room, partner, parents and ancestors, reviving dead dwellers.
+- **Families:** pregnancy and time to birth, future children, children and time until they grow up.
+- **Wasteland:** teams, their time, health, Stimpaks and RadAway, found items and theme parts, team journal.
+- **Quests and objectives:** current, daily and weekly quests, replacing and completing objectives, difficulty, history of finished quests, achievements with progress.
+- **Events:** incidents in rooms, pausing random incidents, the Mysterious Stranger, deathclaws, Bottle and Cappy, refugees, the daily vault report.
+- **Expert mode:** a JSON tree with access to every key, export and import of the decrypted JSON.
 
 ### Installation
 
-All files are on the [latest release](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest) page. SHA-256 checksums are in `SHA256SUMS.txt` there.
+All files are on the [latest release](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest) page.
 
-| System | File |
+| System | Which file to download |
 |---|---|
-| Windows 10 and 11 (x64) | `ShelterSave-Studio-1.0.0-windows-x64-setup.exe` — installer; `…-windows-x64-portable.exe` — runs without installation |
-| Linux (x64) | `…-linux-x64.AppImage`, `…-linux-x64.deb` (Debian, Ubuntu), `…-linux-x64.rpm` (Fedora, openSUSE) |
-| macOS 11 or newer, Apple Silicon | `…-macos-arm64.dmg` or `…-macos-arm64.zip` |
+| Windows 10 and 11 (x64) | `ShelterSave-Studio-1.0.0-windows-x64-setup.exe` — installer; `ShelterSave-Studio-1.0.0-windows-x64-portable.exe` — runs without installation |
+| Linux (x64) | `…-linux-x64.AppImage` — any distribution; `…-linux-x64.deb` — Debian, Ubuntu, Mint; `…-linux-x64.rpm` — Fedora, openSUSE |
+| macOS 11 or newer, Apple Silicon (M1 and newer) | `…-macos-arm64.dmg` or `…-macos-arm64.zip` |
 | macOS 11 or newer, Intel | `…-macos-x64.dmg` or `…-macos-x64.zip` |
-| Any modern browser | [shelter.mahiron.online](https://shelter.mahiron.online/en/), nothing to install |
+| Browser | Nothing to download: [shelter.mahiron.online](https://shelter.mahiron.online/en/) |
 
-- **Windows.** The installer installs for the current user only and needs no administrator rights. It creates shortcuts, can associate `.sav` files with the program and is removed through Settings → Apps.
-- **Linux.** `.deb`: `sudo apt install ./ShelterSave-Studio-1.0.0-linux-x64.deb`; `.rpm`: `sudo dnf install ./ShelterSave-Studio-1.0.0-linux-x64.rpm`; AppImage: `chmod +x` and run it.
+- **Windows.** The installer installs the program for the current user and needs no administrator rights. It creates shortcuts, can associate `.sav` files with the program if you choose so, and is removed through Settings → Apps.
+- **Linux.** `.deb`: `sudo apt install ./ShelterSave-Studio-1.0.0-linux-x64.deb`. `.rpm`: `sudo dnf install ./ShelterSave-Studio-1.0.0-linux-x64.rpm`. AppImage: make it executable (`chmod +x`) and open it.
 - **macOS.** Open the `.dmg` and drag the program to Applications, or unpack the `.zip`.
 
-To check a file run `Get-FileHash -Algorithm SHA256 <file>` in PowerShell or `sha256sum <file>` on Linux and macOS. The result must match the line in `SHA256SUMS.txt`.
+#### If the system warns about an unknown publisher
 
-#### Unsigned program warning
-
-The builds are not signed with a paid developer certificate, so the system warns about an unknown publisher. This is expected; check the file with its checksum.
+The program is not signed with a paid developer certificate, so Windows and macOS show a warning on the first start. This is expected. To make sure the file has not been tampered with, compare its checksum with `SHA256SUMS.txt` on the release page: `Get-FileHash -Algorithm SHA256 <file>` in PowerShell or `sha256sum <file>` on Linux and macOS.
 
 - **Windows (SmartScreen):** press "More info", then "Run anyway".
-- **macOS 15 and newer:** on the first start a message says the program could not be verified. Close it, open System Settings → Privacy & Security, press "Open Anyway" at the bottom and confirm with your password. On macOS 11–14 it is enough to open the program with right click → "Open". Instead you can run this in Terminal: `xattr -dr com.apple.quarantine /Applications/ShelterSave-Studio.app`.
+- **macOS 15 and newer:** close the message saying the program could not be verified, open System Settings → Privacy & Security, press "Open Anyway" at the bottom and confirm with your password. On macOS 11–14: right-click the program and choose "Open". Another way is a Terminal command: `xattr -dr com.apple.quarantine /Applications/ShelterSave-Studio.app`.
 
 ### How to use
 
-1. **Close the game.** A running game writes its own state over the edited file.
-2. **Open the save.** The desktop version lists the vaults it finds. On the website drag the file onto the page or press "Choose file". The game has three slots, so the files are always named `Vault1.sav`, `Vault2.sav` and `Vault3.sav`.
-   - Windows, Steam and Bethesda.net: `%LOCALAPPDATA%\FalloutShelter`.
-   - Linux, Steam with Proton: `~/.steam/steam/steamapps/compatdata/588430/pfx/drive_c/users/steamuser/AppData/Local/FalloutShelter`.
-   - Android: `Android/data/com.bethsoft.falloutshelter/files` (on Android 11 and newer, through a computer over USB).
-3. **Change what you need.** Every item has an explanation: point at the question mark. Ctrl+K searches settings, dwellers and items.
-4. **Write the file.** The editor shows all changes and checks the file. The desktop version makes a backup before the first write and writes the file in place. The website gives you the file to download: put it into the saves folder under the same name, replacing the old one.
-5. **Start the game.** If the game syncs saves through the cloud, turn syncing off while editing, or the cloud copy may replace your file.
+1. **Close the game.** A running game writes its own state over the edited file when it exits.
+2. **Open the save.** The desktop version lists the vaults it finds. On the website drag the file onto the page or press "Choose file". Where saves are stored:
+   - Windows (Steam and Bethesda.net): `%LOCALAPPDATA%\FalloutShelter`;
+   - Linux (Steam, Proton): `~/.steam/steam/steamapps/compatdata/588430/pfx/drive_c/users/steamuser/AppData/Local/FalloutShelter`;
+   - Android: `Android/data/com.bethsoft.falloutshelter/files` (on Android 11 and newer the folder is reachable only from a computer over USB).
+3. **Make your changes.** Point at the question mark next to a field to read its explanation.
+4. **Write the file.** The editor shows all changes and the check result. The desktop version writes the file in place after backing up the original. The website offers the file for download: put it into the saves folder in place of the old one.
+5. **Start the game.** If your saves sync through the cloud, turn syncing off while editing, or the cloud copy may replace your file.
+
+**File names.** The game has three save slots and loads only the files `Vault1.sav`, `Vault2.sav` and `Vault3.sav`. The editor opens a file with any name, a backup for example, but before you start the game the file must be in the saves folder under the name of the slot you want.
 
 Full help: [shelter.mahiron.online/en/help/](https://shelter.mahiron.online/en/help/).
 
-### Building from source
-
-You need [Rust](https://www.rust-lang.org/) 1.95 or newer. On Linux also install `libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxcb1-dev`.
-
-```sh
-git clone https://github.com/Mahiron-hq/ShelterSave-Studio
-cd ShelterSave-Studio
-cargo run --release -p shelter-save-studio      # desktop version
-cargo test --workspace                           # tests
-```
-
-The web version and the site server also need Node.js 24, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` 0.2.130 and `wasm-opt` from [binaryen](https://github.com/WebAssembly/binaryen) (its path in the `WASM_OPT` variable):
-
-```sh
-rustup target add wasm32-unknown-unknown
-cargo install --locked wasm-bindgen-cli --version 0.2.130
-cd web && npm ci && npm run build && cd ..        # site in web/dist
-cargo build --release -p shelter-site            # server with the site built in
-```
-
-The Windows installer is built from the finished program: put its full path into `SHELTER_PAYLOAD` and run `cargo build --release -p shelter-save-studio-setup`. Installing the server on Debian is described in [deploy/INSTALL.en.md](deploy/INSTALL.en.md).
-
-### How it works
-
-- `crates/core` is the shared core: decryption and encryption (AES-256-CBC, [format description](docs/SAV_FORMAT.md)), lossless JSON (numbers and strings are kept as written, key order and duplicates are preserved), actions with undo, the integrity check, game rules and interface texts.
-- `data/catalog.json` is a reference built from the game code and data: items, rooms, quests, value limits. It holds no pictures, only the positions of the needed parts in the game files and their checksums.
-- `crates/art` reads Unity archives from the installed game and draws a dweller the way the game's shader does.
-- `apps/desktop` is the desktop version built with [egui](https://github.com/emilk/egui). `apps/installer` is the Windows installer.
-- `crates/wasm` and `web/` are the same core compiled to WebAssembly and a Svelte interface. The file is processed only in the browser.
-- `apps/site` is the site server: pages, anonymous statistics without cookies, a watchdog and a Telegram bot for the site owner.
-
 ### Limitations
 
-- The editor is made for game version 2.7 on PC (Steam, Bethesda.net); the Android version uses the same file format. Console and iOS saves were not tested.
-- The game sees only `Vault1.sav`, `Vault2.sav` and `Vault3.sav`; it does not load files with other names.
-- The website shows no game pictures until you pick the `FalloutShelter_Data/data.unity3d` file of your PC game. The Android version has no such file. The website cannot find saves by itself, write the file in place or notice that the game has saved it: only the desktop version can.
-- How often incidents, visitors and refugee waves happen is set by the game, not by the save, so it cannot be changed; only the current timers and chances are editable.
+- The editor is made for game version 2.7 on PC (Steam, Bethesda.net). The Android version uses the same file format. Console and iOS saves have not been tested.
+- The desktop version shows game pictures when the game is installed on the same computer. The website shows them after you pick the `FalloutShelter_Data/data.unity3d` file from the PC game folder; the Android version has no such file. Everything else works without pictures.
+- Unlike the desktop version, the website cannot find saves by itself, write the file in place or notice that the game has overwritten it: browsers do not give websites access to folders on disk.
+- How often incidents, visitors and refugees happen is set by the game's settings, not by the save. The editor changes only the current timers and chances.
 - The dweller preview does not draw large headgear.
-- The builds are not signed with a developer certificate (see "Installation").
 
 ### Privacy
 
-The desktop version makes no network requests at all. On the website the save file is decrypted and edited only in the browser and never sent anywhere; the site sets no cookies and counts visits anonymously, and counting can be turned off. Full text: [PRIVACY.md](PRIVACY.md).
+The desktop version never goes online. On the website the save file is processed only in the browser and is not sent to the server. The site sets no cookies and counts visits anonymously; counting can be turned off. Details: [PRIVACY.md](PRIVACY.md).
 
 ### Disclaimer
 
-The program is provided "as is", without any warranty. Keep a copy of the original file: you edit your save at your own risk.
+The program is provided "as is", without warranty. Keep a copy of the original file before editing.
 
 ShelterSave-Studio is an independent open source project. It is not affiliated with or endorsed by ZeniMax Media Inc., Bethesda Softworks LLC, Bethesda Game Studios, Behaviour Interactive Inc. or Microsoft Corporation.
 
@@ -286,7 +361,7 @@ Fallout Shelter was developed by Bethesda Game Studios with Behaviour Interactiv
 
 ### License
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). Third-party licenses: [THIRD_PARTY.md](THIRD_PARTY.md). Reporting a vulnerability: [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+GPL-3.0-or-later, see [LICENSE](LICENSE). Third-party licenses: [THIRD_PARTY.md](THIRD_PARTY.md). Reporting a vulnerability: [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md). The save file format is described in [docs/SAV_FORMAT.md](docs/SAV_FORMAT.md), installing the website server in [deploy/INSTALL.en.md](deploy/INSTALL.en.md).
 
 ---
 

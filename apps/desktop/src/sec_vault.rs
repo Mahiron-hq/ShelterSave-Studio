@@ -2364,10 +2364,12 @@ use shelter_core::pictures::{applied_theme, theme_picture, HOLIDAYS, THEME_ROOMS
 
 /// Room picture from the game, as wide as the space allows.
 fn room_picture(app: &mut App, ui: &mut egui::Ui, kind: &str, id: &str, max_w: f32) -> bool {
-    let tex = app.art.icon(ui.ctx(), kind, id).or_else(|| {
-        let alt = shelter_core::pictures::room_picture_fallback(id)?;
-        app.art.icon(ui.ctx(), kind, &alt)
-    });
+    let tex = if crate::art::Store::known(kind, id) {
+        app.art.icon(ui.ctx(), kind, id)
+    } else {
+        let alt = shelter_core::pictures::room_picture_fallback(id);
+        alt.and_then(|alt| app.art.icon(ui.ctx(), kind, &alt))
+    };
     let Some(t) = tex else {
         return false;
     };
@@ -2485,9 +2487,8 @@ fn theme_name(app: &App, id: &str) -> String {
 
 /// Whether today is inside a [month, day] window that may wrap over the new year.
 fn in_season(start: [u32; 2], end: [u32; 2]) -> bool {
-    use chrono::Datelike;
-    let now = chrono::Local::now();
-    let today = (now.month(), now.day());
+    let now = jiff::Zoned::now();
+    let today = (now.month() as u32, now.day() as u32);
     let s = (start[0], start[1]);
     let e = (end[0], end[1]);
     if s <= e {

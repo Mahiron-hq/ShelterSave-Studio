@@ -83,7 +83,7 @@ pub fn make_backup(root: &Path, file: &Path, keep: u32) -> std::io::Result<PathB
         .extension()
         .map(|e| e.to_string_lossy().to_string())
         .unwrap_or_else(|| "sav".into());
-    let stamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+    let stamp = jiff::Zoned::now().strftime("%Y-%m-%d_%H-%M-%S");
     let mut target = dir.join(format!("{stamp}.{ext}"));
     let mut n = 1;
     while target.exists() {
@@ -185,12 +185,13 @@ pub fn discover(extra: &[PathBuf]) -> Vec<FoundSave> {
 }
 
 pub fn format_time(t: Option<SystemTime>) -> String {
-    t.map(|t| {
-        chrono::DateTime::<chrono::Local>::from(t)
-            .format("%Y-%m-%d %H:%M")
-            .to_string()
-    })
-    .unwrap_or_default()
+    t.and_then(|t| jiff::Timestamp::try_from(t).ok())
+        .map(|t| {
+            t.to_zoned(jiff::tz::TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M")
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

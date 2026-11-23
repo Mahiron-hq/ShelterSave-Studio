@@ -123,6 +123,9 @@ pub enum Status {
 /// Rendered dwellers kept as textures.
 const RENDER_CACHE: usize = 48;
 
+/// Decoded dweller textures kept in memory (each is 4 MB or more).
+const IMAGE_CACHE: usize = 12;
+
 #[derive(Default)]
 struct Shared {
     probed: bool,
@@ -131,13 +134,18 @@ struct Shared {
     mismatch: bool,
     /// Textures the dweller preview is drawn from, by name.
     images: HashMap<String, Arc<Image>>,
-    /// Item pictures cut from the atlases, top row first.
-    icons: HashMap<String, Arc<Image>>,
+    /// When each texture was last used for a preview.
+    image_use: HashMap<String, u64>,
+    tick: u64,
+    /// Item pictures cut from an atlas and not yet turned into textures.
+    icons: HashMap<String, Image>,
+    /// Atlases already cut into item pictures.
+    cut: std::collections::HashSet<String>,
     meshes: HashMap<String, Arc<Mesh>>,
     rendered: HashMap<String, egui::TextureHandle>,
     rendering: bool,
     bundle: Option<Arc<GameBundle>>,
-    /// Textures read on demand (outfits), so each is asked for once.
+    /// Textures being read, so each is asked for once at a time.
     requested: std::collections::HashSet<String>,
     /// Wasteland journal phrases were read from the game.
     texts: bool,
@@ -204,12 +212,34 @@ impl Store {
         if let Some(t) = self.icons.get(&key) {
             return Some(t.clone());
         }
-        let img = self.shared.lock().ok()?.icons.get(&key).cloned()?;
-        let color =
-            egui::ColorImage::from_rgba_unmultiplied([img.w as usize, img.h as usize], &img.rgba);
-        let handle = ctx.load_texture(format!("icon:{key}"), color, egui::TextureOptions::LINEAR);
-        self.icons.insert(key, handle.clone());
-        Some(handle)
+        let mut s = self.shared.lock().ok()?;
+        if let Some(img) = s.icons.remove(&key) {
+            drop(s);
+            let color = egui::ColorImage::from_rgba_unmultiplied(
+                [img.w as usize, img.h as usize],
+                &img.rgba,
+            );
+            let handle =
+                ctx.load_texture(format!("icon:{key}"), color, egui::TextureOptions::LINEAR);
+            self.icons.insert(key, handle.clone());
+            return Some(handle);
+        }
+        let atlas = catalog().art.as_ref()?.icons.get(&key)?.0.clone();
+        let bundle = s.bundle.clone()?;
+        if s.cut.insert(atlas.clone()) {
+            let shared = self.shared.clone();
+            let ctx = ctx.clone();
+            std::thread::spawn(move || cut_atlas(&shared, &ctx, &bundle, &atlas));
+        }
+        None
+    }
+
+    /// Whether the game has a picture with this key.
+    pub fn known(kind: &str, id: &str) -> bool {
+        catalog()
+            .art
+            .as_ref()
+            .is_some_and(|a| a.icons.contains_key(&format!("{kind}:{id}")))
     }
 
     /// Dweller in the outfit they wear. While a new look is being drawn the
@@ -221,13 +251,23 @@ impl Store {
         look: &Look,
     ) -> Option<egui::TextureHandle> {
         let key = look.key();
-        let mut s = self.shared.lock().ok()?;
+        let mut guard = self.shared.lock().ok()?;
+        let s = &mut *guard;
         if let Some(t) = s.rendered.get(&key) {
             let t = t.clone();
             self.last.insert(slot, t.clone());
             return Some(t);
         }
         if !s.rendering {
+            s.tick += 1;
+            // With no images every texture of the look is reported missing.
+            if let Err(all) = Parts::new(&HashMap::new(), look) {
+                for name in all {
+                    if s.images.contains_key(&name) {
+                        s.image_use.insert(name, s.tick);
+                    }
+                }
+            }
             let gender = if look.male { "male" } else { "female" };
             let mesh = s.meshes.get(gender).cloned();
             match (Parts::new(&s.images, look), mesh) {
@@ -251,7 +291,7 @@ impl Store {
                 (Ok(_), None) => {}
             }
         }
-        drop(s);
+        drop(guard);
         self.last.get(&slot).cloned()
     }
 }
@@ -295,13 +335,65 @@ fn load_textures(
         if let Ok(mut s) = shared.lock() {
             match img {
                 Some(i) => {
+                    s.requested.remove(name);
                     s.images.insert(name.clone(), Arc::new(i));
+                    let tick = s.tick;
+                    s.image_use.insert(name.clone(), tick);
                 }
                 None => s.mismatch = true,
             }
         }
     }
+    if let Ok(mut s) = shared.lock() {
+        let s = &mut *s;
+        while s.images.len() > IMAGE_CACHE {
+            let oldest = s
+                .images
+                .keys()
+                .filter(|n| !names.contains(n))
+                .min_by_key(|n| s.image_use.get(*n).copied().unwrap_or(0))
+                .cloned();
+            let Some(oldest) = oldest else { break };
+            s.images.remove(&oldest);
+            s.image_use.remove(&oldest);
+        }
+    }
     ctx.request_repaint();
+}
+
+fn cut_atlas(shared: &Mutex<Shared>, ctx: &egui::Context, bundle: &GameBundle, atlas: &str) {
+    let list = shelter_art::icons_by_atlas()
+        .into_iter()
+        .find(|(t, _)| t == atlas)
+        .map(|(_, l)| l)
+        .unwrap_or_default();
+    let cut: Vec<(String, Image)> = match decode(bundle, atlas) {
+        Some(img) => list
+            .into_iter()
+            .filter_map(|(key, rect)| {
+                let max = image::max_side(&key);
+                image::cut_icon(&img, rect, max).map(|i| (key, i))
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    if let Ok(mut s) = shared.lock() {
+        if cut.is_empty() {
+            s.mismatch = true;
+        }
+        s.icons.extend(cut);
+    }
+    ctx.request_repaint();
+}
+
+/// Whether a texture in the game file still matches the catalog.
+fn texture_ok(bundle: &GameBundle, name: &str) -> bool {
+    let info = catalog().art.as_ref().and_then(|a| a.textures.get(name));
+    let raw = image::texture_place(name).and_then(|(node, o, s)| bundle.read(&node, o, s));
+    match (info, raw) {
+        (Some(info), Some(raw)) => shelter_art::bundle::crc32(&raw) == info.crc,
+        _ => false,
+    }
 }
 
 fn load_all(shared: &Mutex<Shared>, ctx: &egui::Context, custom: Option<String>) {
@@ -359,32 +451,14 @@ fn load_all(shared: &Mutex<Shared>, ctx: &egui::Context, custom: Option<String>)
         s.texts = texts;
     }
     ctx.request_repaint();
-    for name in dweller::base_textures() {
-        match decode(&bundle, &name) {
-            Some(img) => {
-                if let Ok(mut s) = shared.lock() {
-                    s.images.insert(name, Arc::new(img));
-                }
-            }
-            None => mismatch(),
-        }
-        ctx.request_repaint();
+    // Pictures are decoded when first shown; here only their checksums are compared.
+    let atlases = shelter_art::icons_by_atlas().into_iter().map(|(t, _)| t);
+    if !dweller::base_textures()
+        .into_iter()
+        .chain(atlases)
+        .all(|t| texture_ok(&bundle, &t))
+    {
+        mismatch();
     }
-    for (tex, list) in shelter_art::icons_by_atlas() {
-        let Some(atlas) = decode(&bundle, &tex) else {
-            mismatch();
-            continue;
-        };
-        let cut: Vec<(String, Arc<Image>)> = list
-            .into_iter()
-            .filter_map(|(key, rect)| {
-                let max = image::max_side(&key);
-                image::cut_icon(&atlas, rect, max).map(|i| (key, Arc::new(i)))
-            })
-            .collect();
-        if let Ok(mut s) = shared.lock() {
-            s.icons.extend(cut);
-        }
-        ctx.request_repaint();
-    }
+    ctx.request_repaint();
 }
