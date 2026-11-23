@@ -104,6 +104,9 @@ pub enum Action {
     },
     Revive {
         ids: Vec<i64>,
+        /// Send a wasteland team of a revived dweller back to the vault.
+        #[serde(default)]
+        home: bool,
     },
     Equip {
         ids: Vec<i64>,
@@ -191,6 +194,14 @@ pub enum Action {
     SetMergeLevel {
         room: i64,
         merge: i64,
+        /// Expert mode: do not merge with equal neighbours.
+        #[serde(default)]
+        apart: bool,
+    },
+    /// Splits a merged room into rooms of the given sizes, left to right.
+    SplitRoom {
+        room: i64,
+        parts: Vec<i64>,
     },
     AddRoom {
         kind: String,
@@ -201,6 +212,9 @@ pub enum Action {
         /// Also unlocks the room in the blueprint book (the game crashes on built locked rooms).
         #[serde(default)]
         unlock: bool,
+        /// Expert mode: do not merge with equal neighbours.
+        #[serde(default)]
+        apart: bool,
     },
     RemoveRoom {
         room: i64,
@@ -209,10 +223,16 @@ pub enum Action {
         room: i64,
         row: i64,
         col: i64,
+        /// Expert mode: do not merge with equal neighbours.
+        #[serde(default)]
+        apart: bool,
     },
     SetRoomLevel {
         room: i64,
         level: i64,
+        /// Expert mode: do not merge with equal neighbours.
+        #[serde(default)]
+        apart: bool,
     },
     RemoveRock {
         index: usize,
@@ -568,9 +588,10 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             })?;
             Ok((Label::new("act.maxHappiness"), n))
         }
-        Action::Revive { ids } => {
-            let n = for_dwellers(b, ids, revive)?;
-            Ok((Label::new("act.revive"), n))
+        Action::Revive { ids, home } => {
+            let mut n = for_dwellers(b, ids, revive)?;
+            n += wake_teams(b, ids, *home)?;
+            Ok((Label::new("act.revive"), n.min(ids.len().max(1))))
         }
         Action::Equip { ids, slot, item } => {
             let n = equip(b, mode, ids, *slot, item.as_deref())?;
@@ -831,9 +852,15 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
                 n,
             ))
         }
-        Action::SetMergeLevel { room, merge } => {
+        Action::SetMergeLevel { room, merge, apart } => {
             set_merge(b, mode, *room, *merge)?;
+            auto_merge(b, mode, *room, *apart)?;
             Ok((Label::new("act.mergeLevel").with("merge", merge), 1))
+        }
+        Action::SplitRoom { room, parts } => {
+            let kind = room_kind(b.root(), *room)?;
+            let n = split_room(b, mode, *room, parts)?;
+            Ok((Label::new("act.splitRoom").with("room", kind), n))
         }
         Action::AddRoom {
             kind,
@@ -842,6 +869,7 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             merge,
             level,
             unlock,
+            apart,
         } => {
             if *unlock && room_lock(b.root(), kind).is_some() {
                 set_room_unlocked(b, mode, kind, true)?;
@@ -849,7 +877,8 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             if mode == Mode::Normal && room_lock(b.root(), kind).is_some() {
                 return Err(RuleError::RoomLocked.into());
             }
-            add_room(b, mode, kind, *row, *col, *merge, *level)?;
+            let id = add_room(b, mode, kind, *row, *col, *merge, *level)?;
+            auto_merge(b, mode, id, *apart)?;
             Ok((Label::new("act.addRoom").with("room", kind), 1))
         }
         Action::RemoveRoom { room } => {
@@ -857,13 +886,20 @@ fn dispatch(b: &mut Builder<'_>, ctx: &Ctx<'_>, action: &Action) -> R<(Label, us
             let n = remove_room(b, mode, *room)?;
             Ok((Label::new("act.removeRoom").with("room", kind), n))
         }
-        Action::MoveRoom { room, row, col } => {
+        Action::MoveRoom {
+            room,
+            row,
+            col,
+            apart,
+        } => {
             let kind = room_kind(b.root(), *room)?;
             move_room(b, mode, *room, *row, *col)?;
+            auto_merge(b, mode, *room, *apart)?;
             Ok((Label::new("act.moveRoom").with("room", kind), 1))
         }
-        Action::SetRoomLevel { room, level } => {
+        Action::SetRoomLevel { room, level, apart } => {
             set_room_level(b, mode, *room, *level)?;
+            auto_merge(b, mode, *room, *apart)?;
             Ok((Label::new("act.roomLevel").with("level", level), 1))
         }
         Action::RemoveRock { index } => {
@@ -1344,6 +1380,53 @@ fn revive(b: &mut Builder<'_>, base: &[Seg]) -> R<bool> {
         }
     }
     Ok(changed)
+}
+
+/// Teams holding revived dwellers: a dead team explores again (as after a revive
+/// in the game), or every such team is recalled to the vault when `home` is set.
+fn wake_teams(b: &mut Builder<'_>, ids: &[i64], home: bool) -> R<usize> {
+    const TEAMS: [&str; 3] = ["vault", "wasteland", "teams"];
+    let snapshot = b.root().clone();
+    let mut n = 0;
+    for (t, team) in arr(&snapshot, &TEAMS).iter().enumerate() {
+        let members = team.get("dwellers").and_then(Value::as_array);
+        if !members.is_some_and(|m| {
+            m.iter()
+                .any(|v| v.as_i64().is_some_and(|id| ids.contains(&id)))
+        }) {
+            continue;
+        }
+        let status = text(team, &["status"]).unwrap_or_default();
+        let dead = status == "Dead" || status == "DeadOnQuest";
+        let away = matches!(
+            status.as_str(),
+            "Exploring" | "GoingToQuest" | "ResumingSurpriseQuest" | "WaitingOnSurpriseQuest"
+        );
+        let base = pi(&TEAMS, t, &[]);
+        let mut changed = false;
+        if home && (dead || away) {
+            let explored = team
+                .get("elapsedTimeAliveExploring")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
+            changed |= b.set(join(&base, &["status"]), Value::str("ReturningToVault"))?;
+            changed |= set_num(b, join(&base, &["elapsedReturningTime"]), 0.0)?;
+            changed |= set_num(
+                b,
+                join(&base, &["returnTripDuration"]),
+                (explored / 2.0).floor(),
+            )?;
+            if dead && team.get("isForceReturningToVault").is_some() {
+                changed |= b.set(join(&base, &["isForceReturningToVault"]), Value::Bool(true))?;
+            }
+        } else if dead {
+            changed |= b.set(join(&base, &["status"]), Value::str("Exploring"))?;
+        }
+        if changed {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 pub fn item_value(kind: ItemKind, id: &str) -> Value {
@@ -2353,6 +2436,207 @@ fn move_room(b: &mut Builder<'_>, mode: Mode, id: i64, row: i64, col: i64) -> R<
     set_num(b, pi(&ROOMS, i, &["row"]), row as f64)?;
     set_num(b, pi(&ROOMS, i, &["col"]), col as f64)?;
     Ok(())
+}
+
+/// Merges a room with equal neighbours the way the game does after a build,
+/// a move or an upgrade. Returns the id of the room that remains.
+fn auto_merge(b: &mut Builder<'_>, mode: Mode, id: i64, apart: bool) -> R<i64> {
+    if apart && mode == Mode::Expert {
+        return Ok(id);
+    }
+    let mut id = id;
+    while let Some(group) = merge_group(b.root(), id) {
+        id = merge_rooms(b, &group)?;
+    }
+    Ok(id)
+}
+
+/// The room and the neighbours the game would merge it with (left first, then right).
+pub fn merge_group(root: &Value, id: i64) -> Option<Vec<i64>> {
+    let list = map::rooms(root);
+    let t = list.iter().find(|r| r.id == id)?;
+    if t.is_elevator() || map::FIXED_ROOMS.contains(&t.kind.as_str()) {
+        return None;
+    }
+    let max = rules::max_merge(&t.kind).min(3);
+    let calm = |rid: i64| {
+        room_index(root, rid).is_some_and(|i| {
+            text(&arr(root, &ROOMS)[i], &["currentStateName"]).as_deref() != Some("RoomEmergency")
+        })
+    };
+    if !calm(t.id) {
+        return None;
+    }
+    let same = |r: &&map::Placed| {
+        r.id != t.id && r.row == t.row && r.kind == t.kind && r.level == t.level && calm(r.id)
+    };
+    let mut total = t.merge;
+    let mut group = vec![t.id];
+    if let Some(l) = list.iter().filter(same).find(|r| r.end() == t.col) {
+        if total + l.merge <= max {
+            total += l.merge;
+            group.push(l.id);
+        }
+    }
+    if let Some(r) = list.iter().filter(same).find(|r| r.col == t.end()) {
+        if total + r.merge <= max {
+            total += r.merge;
+            group.push(r.id);
+        }
+    }
+    let shape_ok = rules::check_room_shape(Mode::Normal, &t.kind, total, t.level).is_ok();
+    (group.len() > 1 && shape_ok).then_some(group)
+}
+
+/// Joins rooms of one row into the leftmost of them.
+fn merge_rooms(b: &mut Builder<'_>, group: &[i64]) -> R<i64> {
+    let placed: Vec<map::Placed> = map::rooms(b.root())
+        .into_iter()
+        .filter(|r| group.contains(&r.id))
+        .collect();
+    let keep = placed
+        .iter()
+        .min_by_key(|r| r.col)
+        .ok_or(RuleError::NotFound)?;
+    let (keep_id, col) = (keep.id, keep.col);
+    let total: i64 = placed.iter().map(|r| r.merge).sum();
+    for other in placed.iter().filter(|r| r.id != keep_id) {
+        let oi = room_index(b.root(), other.id).ok_or(RuleError::NotFound)?;
+        let o = arr(b.root(), &ROOMS)[oi].clone();
+        let ki = room_index(b.root(), keep_id).ok_or(RuleError::NotFound)?;
+        for list in [
+            "dwellers",
+            "deadDwellers",
+            "dwellerWithPendingCompleteTraining",
+            "mrHandyList",
+            "partners",
+            "children",
+            "slots",
+        ] {
+            let Some(items) = o.get(list).and_then(Value::as_array) else {
+                continue;
+            };
+            let target = pi(&ROOMS, ki, &[list]);
+            if b.get(&target).is_none() {
+                continue;
+            }
+            for item in items {
+                b.push(target.clone(), item.clone())?;
+            }
+        }
+        if let Some(res) = o
+            .at(&p(&["storage", "resources"]))
+            .and_then(Value::as_object)
+        {
+            for (k, v) in &res.0 {
+                let key = k.text();
+                let path = pi(&ROOMS, ki, &["storage", "resources", key.as_str()]);
+                let add = v.as_f64().unwrap_or(0.0);
+                if let Some(cur) = b.get(&path).and_then(Value::as_f64) {
+                    if add != 0.0 {
+                        set_num(b, path, cur + add)?;
+                    }
+                }
+            }
+        }
+        let mut tasks = Vec::new();
+        if let Some(state) = o.get("currentState") {
+            owned_tasks(state, &mut tasks);
+        }
+        remove_tasks(b, &tasks)?;
+        let oi = room_index(b.root(), other.id).ok_or(RuleError::NotFound)?;
+        b.remove(p(&ROOMS), oi)?;
+        for list in [&ACTORS, &DWELLERS] {
+            let n = arr(b.root(), list).len();
+            for ai in 0..n {
+                let path = pi(list, ai, &["savedRoom"]);
+                if b.get(&path).and_then(Value::as_i64) == Some(other.id) {
+                    set_num(b, path, keep_id as f64)?;
+                }
+            }
+        }
+        let happy = p(&["happinessManager"]);
+        if b.get(&happy).is_some() {
+            b.remove_key(happy.clone(), &format!("room{}", other.id))?;
+            remove_number(b, join(&happy, &["rooms"]), other.id)?;
+        }
+    }
+    let ki = room_index(b.root(), keep_id).ok_or(RuleError::NotFound)?;
+    set_num(b, pi(&ROOMS, ki, &["col"]), col as f64)?;
+    set_num(b, pi(&ROOMS, ki, &["mergeLevel"]), total as f64)?;
+    Ok(keep_id)
+}
+
+/// Ways a room of this size can be split, left to right.
+pub fn split_options(merge: i64) -> Vec<Vec<i64>> {
+    match merge {
+        2 => vec![vec![1, 1]],
+        3 => vec![vec![1, 1, 1], vec![1, 2], vec![2, 1]],
+        _ => Vec::new(),
+    }
+}
+
+/// Why a room cannot be split this way in this mode, if it cannot.
+pub fn split_error(root: &Value, mode: Mode, id: i64, parts: &[i64]) -> Option<RuleError> {
+    let Some(i) = room_index(root, id) else {
+        return Some(RuleError::NotFound);
+    };
+    let r = &arr(root, &ROOMS)[i];
+    let kind = text(r, &["type"]).unwrap_or_default();
+    let merge = int(r, &["mergeLevel"]).unwrap_or(1);
+    let level = int(r, &["level"]).unwrap_or(1);
+    if map::FIXED_ROOMS.contains(&kind.as_str()) || kind == "Elevator" {
+        return Some(RuleError::NotAllowed);
+    }
+    if parts.len() < 2 || parts.iter().any(|p| *p < 1) || parts.iter().sum::<i64>() != merge {
+        return Some(RuleError::NotAllowed);
+    }
+    if mode == Mode::Normal {
+        if parts
+            .iter()
+            .any(|p| rules::check_room_shape(mode, &kind, *p, level).is_err())
+        {
+            return Some(RuleError::RoomSize);
+        }
+        if room_busy(r) || text(r, &["currentStateName"]).as_deref() == Some("RoomEmergency") {
+            return Some(RuleError::RoomBusy);
+        }
+    }
+    None
+}
+
+fn split_room(b: &mut Builder<'_>, mode: Mode, id: i64, parts: &[i64]) -> R<usize> {
+    if let Some(e) = split_error(b.root(), mode, id, parts) {
+        return Err(e.into());
+    }
+    let i = room_index(b.root(), id).ok_or(RuleError::NotFound)?;
+    let r = arr(b.root(), &ROOMS)[i].clone();
+    let kind = text(&r, &["type"]).unwrap_or_default();
+    let row = int(&r, &["row"]).unwrap_or(0);
+    let mut col = int(&r, &["col"]).unwrap_or(0);
+    let level = int(&r, &["level"]).unwrap_or(1);
+    let class = text(&r, &["class"])
+        .or_else(|| catalog().room(&kind).map(|c| c.class.clone()))
+        .unwrap_or_else(|| "Facility".into());
+    let mut movers = ints(&r, "dwellers").into_iter().skip(2 * parts[0] as usize);
+    set_num(b, pi(&ROOMS, i, &["mergeLevel"]), parts[0] as f64)?;
+    col += map::width_of(&kind, parts[0]);
+    for part in &parts[1..] {
+        let new_id = next_room_id(b)?;
+        let room = new_room(b.root(), &kind, &class, (row, col), *part, level, new_id);
+        b.push(p(&ROOMS), room)?;
+        let group: Vec<i64> = movers.by_ref().take(2 * *part as usize).collect();
+        for d in group {
+            drop_from_rooms(b, d, None)?;
+            let ni = room_index(b.root(), new_id).ok_or(RuleError::NotFound)?;
+            b.push(pi(&ROOMS, ni, &["dwellers"]), Value::int(d))?;
+            if let Ok(base) = dweller_path(b.root(), d) {
+                set_num(b, join(&base, &["savedRoom"]), new_id as f64)?;
+            }
+        }
+        col += map::width_of(&kind, *part);
+    }
+    Ok(parts.len())
 }
 
 fn set_room_level(b: &mut Builder<'_>, mode: Mode, id: i64, level: i64) -> R<()> {
@@ -3845,19 +4129,31 @@ mod tests {
         assert!(run(
             &mut root,
             &ctx,
-            &Action::SetMergeLevel { room: 1, merge: 2 }
+            &Action::SetMergeLevel {
+                room: 1,
+                merge: 2,
+                apart: false,
+            }
         )
         .is_ok());
         assert!(run(
             &mut root,
             &ctx,
-            &Action::SetMergeLevel { room: 1, merge: 3 }
+            &Action::SetMergeLevel {
+                room: 1,
+                merge: 3,
+                apart: false,
+            }
         )
         .is_err());
         assert!(run(
             &mut root,
             &ctx,
-            &Action::SetMergeLevel { room: 2, merge: 3 }
+            &Action::SetMergeLevel {
+                room: 2,
+                merge: 3,
+                apart: false,
+            }
         )
         .is_err());
         run(
@@ -3970,6 +4266,7 @@ mod tests {
             merge: 1,
             level: 1,
             unlock: false,
+            apart: false,
         };
         let err = |r: R<Transaction>| match r {
             Err(ActionError::Rule(e)) => e,
@@ -4003,6 +4300,7 @@ mod tests {
             merge,
             level: 1,
             unlock: false,
+            apart: false,
         };
         run(&mut root, &ctx, &sized("Overseer", 1, 0, 2)).unwrap_err();
         run(&mut root, &ctx, &add("Elevator", 2, 9)).unwrap();
@@ -4031,7 +4329,8 @@ mod tests {
                 &Action::MoveRoom {
                     room: 6,
                     row: 3,
-                    col: 10
+                    col: 10,
+                    apart: false,
                 }
             )),
             RuleError::RoomDisconnected
@@ -4043,6 +4342,7 @@ mod tests {
                 room: 6,
                 row: 2,
                 col: 20,
+                apart: false,
             },
         )
         .unwrap_err();
@@ -4053,6 +4353,7 @@ mod tests {
                 room: 6,
                 row: 2,
                 col: 16,
+                apart: false,
             },
         )
         .unwrap();
@@ -4072,8 +4373,26 @@ mod tests {
             integrity::check(&root)
         );
 
-        run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 3 }).unwrap();
-        run(&mut root, &ctx, &Action::SetRoomLevel { room: 4, level: 4 }).unwrap_err();
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetRoomLevel {
+                room: 4,
+                level: 3,
+                apart: false,
+            },
+        )
+        .unwrap();
+        run(
+            &mut root,
+            &ctx,
+            &Action::SetRoomLevel {
+                room: 4,
+                level: 4,
+                apart: false,
+            },
+        )
+        .unwrap_err();
     }
 
     #[test]
@@ -4198,7 +4517,11 @@ mod tests {
         run(
             &mut root,
             &ctx,
-            &Action::SetMergeLevel { room: 1, merge: 3 },
+            &Action::SetMergeLevel {
+                room: 1,
+                merge: 3,
+                apart: false,
+            },
         )
         .unwrap();
         let r = &arr(&root, &ROOMS)[0];
@@ -4386,6 +4709,7 @@ mod tests {
             merge: 1,
             level: 1,
             unlock,
+            apart: false,
         };
         assert!(matches!(
             run(&mut root, &ctx, &bar(false)),

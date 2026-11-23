@@ -28,6 +28,7 @@
   interface Info {
     index: number
     sizes: { merge: number; fits: boolean; free: boolean }[]
+    splits: { parts: number[]; error: "size" | "busy" | "other" | null }[]
     maxLevel: number
     neighbours: boolean
     canRemove: boolean
@@ -121,7 +122,7 @@
           label={levelInfo.label}
           value={r.level}
           options={Array.from({ length: Math.max(info.maxLevel, r.level) }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
-          onchange={(l) => app.act({ action: "setRoomLevel", room: id, level: l })}
+          onchange={(l) => app.act({ action: "setRoomLevel", room: id, level: l, apart: ui.keepApart })}
         />
       </Row>
     {/if}
@@ -137,9 +138,23 @@
             disabled: !s.fits && s.merge !== (r.mergeLevel ?? 1),
             title: !s.fits ? app.t(s.free ? "room.mergeCuts" : "room.mergeNoSpace") : undefined,
           }))}
-          onchange={(m) => app.act({ action: "setMergeLevel", room: id, merge: m })}
+          onchange={(m) => app.act({ action: "setMergeLevel", room: id, merge: m, apart: ui.keepApart })}
         />
       </Row>
+      {#if info.splits.length}
+        <Row label={app.t("room.split")} help={app.t("room.splitHelp")}>
+          <div class="row-wrap">
+            {#each info.splits as s (s.parts.join("+"))}
+              <button
+                type="button"
+                disabled={s.error !== null}
+                title={s.error === "size" ? app.t("room.splitSize") : s.error === "busy" ? app.t("room.splitBusy") : undefined}
+                onclick={() => app.act({ action: "splitRoom", room: id, parts: s.parts })}>{s.parts.join(" + ")}</button
+              >
+            {/each}
+          </div>
+        </Row>
+      {/if}
     {/if}
 
     {#each [["power", "room.power"], ["broken", "room.broken"], ["withHole", "room.withHole"], ["emergencyDone", "room.emergencyDone"]] as [key, label] (key)}

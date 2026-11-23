@@ -31,7 +31,7 @@
     {#each h.undone as u, i (i)}
       <li>
         <button type="button" class="step undone" onclick={() => goTo(h.done.length + i + 1)} title={app.t("journal.goTo")}>
-          {u} — {app.t("journal.undone")}
+          {u} – {app.t("journal.undone")}
         </button>
       </li>
     {/each}

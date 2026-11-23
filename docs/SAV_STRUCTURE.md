@@ -146,7 +146,7 @@
 
 Ключи `eventsThemes`: `Cafeteria_Xmas`, `Cafeteria_Halloween`,
 `Cafeteria_ThanksGiving`, `LivingQuarters_Xmas`, `LivingQuarters_Halloween`,
-`LivingQuarters_ThanksGiving`. Каждый — предмет-тема (формат предмета, раздел 4.3):
+`LivingQuarters_ThanksGiving`. Каждый – предмет-тема (формат предмета, раздел 4.3):
 
 | Поле | Тип | Назначение |
 |------|-----|-----------|
@@ -268,7 +268,7 @@
 | `lastPartner` | int | `serializeId` прошлого партнёра (-1 нет) |
 | `ascendants` | array of 6 int | Предки: `serializeId`; отрицательные значения (до -20) для жителей без записи |
 
-**`stats.stats`** — массив из 8 объектов `{value, mod, exp}`:
+**`stats.stats`** – массив из 8 объектов `{value, mod, exp}`:
 
 | Индекс | Характеристика |
 |--------|----------------|
@@ -317,7 +317,7 @@
 | `savedRoom` | int | Комната (-1 нет) |
 | `FollowedID` | int | `serializeId` жителя, за которым следует питомец |
 
-Формат `equipment.storage` — такой же, как у `vault.storage` (раздел 4.4). В
+Формат `equipment.storage` – такой же, как у `vault.storage` (раздел 4.4). В
 `questDwellers.actors[].equipment.storage` нет ключей `DummyUltracite` и `PokerChip`.
 
 #### 4.1.4 Питомец жителя (`equippedPet`) и `InitialEquipment[].pet`
@@ -354,7 +354,7 @@
 | `Achievements` | object | Достижения (4.2.3) |
 | `wasteland` | object | Состояние пустоши (4.2.4) |
 
-**`LunchBoxesByType`:** каждый элемент — один «ящик», значение означает тип:
+**`LunchBoxesByType`:** каждый элемент – один «ящик», значение означает тип:
 `0` ланчбокс, `1` Мистер Помощник, `2` переноска для питомца, `3` стартовый набор.
 Количество каждого типа = число элементов с этим значением. `LunchBoxesCount`
 должен быть равен длине массива.
@@ -369,7 +369,7 @@
 | `type` | string | Тип комнаты (ниже) |
 | `class` | string | Класс комнаты (ниже) |
 | `mergeLevel` | int | Сколько комнат объединено: 1, 2 или 3 |
-| `row` | int | Этаж (0 — верхний) |
+| `row` | int | Этаж (0 – верхний) |
 | `col` | int | Позиция слева по горизонтали (ячейки) |
 | `power` | boolean | Есть питание |
 | `roomHealth` | object | `damageValue` (float), `initialValue` (float): повреждения |
@@ -452,7 +452,7 @@
 
 ### 4.3 Предмет и склад предметов
 
-`vault.inventory.items[]` — каждый предмет отдельная запись (десять одинаковых
+`vault.inventory.items[]` – каждый предмет отдельная запись (десять одинаковых
 предметов = десять записей):
 
 | Поле | Тип | Назначение |
@@ -566,7 +566,7 @@
 | `MaleTasksQuant` | int | Число задач для мужчин |
 | `FemaleTasksQuant` | int | Число задач для женщин |
 
-Boolean-флаги «контекстной подсказки уже показана» (`true` — подсказка использована):
+Boolean-флаги «контекстной подсказки уже показана» (`true` – подсказка использована):
 `ContextualVaultTecObjectives`, `ContextualAddFriends`, `ContextualWasteland`,
 `ContextualRadioRoom`, `ContextualWeaponsAndOutfits`, `ContextualTrainDweller`,
 `ContextualBabies`, `ContextualDestroyRocks`, `ContextualStorage`,
@@ -674,7 +674,7 @@ Boolean-флаги «контекстной подсказки уже показ
 
 ### 5.10 `StatsWindow.vaultData` (статистика)
 
-Все поля — int, кроме отмеченных.
+Все поля – int, кроме отмеченных.
 
 | Поле | Назначение |
 |------|-----------|
@@ -753,7 +753,7 @@ Boolean-флаги «контекстной подсказки уже показ
 | `wasteland` | object | Комната-пустошь (формат комнаты 4.2.1, `type = FakeWasteland`) |
 | `entranceId` | int | `deserializeID` входа |
 
-Комната квеста — те же общие поля, что в 4.2.1, плюс (только у комнат со
+Комната квеста – те же общие поля, что в 4.2.1, плюс (только у комнат со
 сценарием):
 
 | Поле | Тип | Назначение |

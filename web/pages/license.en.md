@@ -12,13 +12,13 @@ The program is distributed in the hope that it will be useful, but **without any
 
 ## Third-party components of the website
 
-- Svelte — MIT License — https://svelte.dev
-- UI SDK — Apache License 2.0 — https://ui-sdk.dev
-- wasm-bindgen — MIT OR Apache-2.0 — https://github.com/rustwasm/wasm-bindgen
-- aes, cbc, base64, serde, serde_json (Rust) — MIT OR Apache-2.0
-- Inter font — SIL Open Font License 1.1 — https://rsms.me/inter/
-- JetBrains Mono font — SIL Open Font License 1.1 — https://www.jetbrains.com/lp/mono/
-- Lucide icons — ISC License — https://lucide.dev
+- Svelte – MIT License – https://svelte.dev
+- UI SDK – Apache License 2.0 – https://ui-sdk.dev
+- wasm-bindgen – MIT OR Apache-2.0 – https://github.com/rustwasm/wasm-bindgen
+- aes, cbc, base64, serde, serde_json (Rust) – MIT OR Apache-2.0
+- Inter font – SIL Open Font License 1.1 – https://rsms.me/inter/
+- JetBrains Mono font – SIL Open Font License 1.1 – https://www.jetbrains.com/lp/mono/
+- Lucide icons – ISC License – https://lucide.dev
 
 The website loads nothing from other domains: all scripts, styles, fonts and data come from this server.
 

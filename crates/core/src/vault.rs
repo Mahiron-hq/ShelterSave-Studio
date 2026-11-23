@@ -155,6 +155,28 @@ pub fn is_dead(d: &Value) -> bool {
         || flag(d, &["health", "permaDeath"]) == Some(true)
 }
 
+/// Index of the wasteland team the dweller belongs to.
+pub fn team_of(root: &Value, id: i64) -> Option<usize> {
+    arr(root, &["vault", "wasteland", "teams"])
+        .iter()
+        .position(|t| arr(t, &["dwellers"]).iter().any(|v| v.as_i64() == Some(id)))
+}
+
+/// A team that is dead, or has a dead member.
+pub fn team_dead(root: &Value, team: &Value) -> bool {
+    let status = text(team, &["status"]).unwrap_or_default();
+    if status == "Dead" || status == "DeadOnQuest" {
+        return true;
+    }
+    let ids: Vec<i64> = arr(team, &["dwellers"])
+        .iter()
+        .filter_map(Value::as_i64)
+        .collect();
+    arr(root, &["dwellers", "dwellers"])
+        .iter()
+        .any(|d| int(d, &["serializeId"]).is_some_and(|i| ids.contains(&i)) && is_dead(d))
+}
+
 /// Grid cells a room covers in its row.
 pub fn room_width(room: &Value) -> i64 {
     let kind = text(room, &["type"]).unwrap_or_default();

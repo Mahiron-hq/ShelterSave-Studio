@@ -34,6 +34,10 @@ The folder `Android/data/com.bethsoft.falloutshelter/files` in the phone storage
 
 In normal mode values stay within what the game accepts and technical fields are hidden. Expert mode (in Settings) opens every field of the file and the JSON tree. Values outside game limits are allowed there but can break the vault, so the editor warns about them.
 
+## Section addresses
+
+Every section of the editor has its own address, for example `/en/vault/rooms` (Vault → Rooms), `/en/dwellers` (Dwellers) or `/en/other/quests` (Other → Quests). The address changes as you move between sections, and the browser Back and Forward buttons work. Such a link is handy in a bug report or a forum tip: it opens that section, and once you pick a file the editor goes straight there. The save file itself never gets into the address.
+
 ## Undo and unfinished sessions
 
 Every edit can be undone (Ctrl+Z) and redone (Ctrl+Y). The history of all steps opens with the clock button. If "Restore unfinished session" is on, the open file and its history are kept in your browser; after a page reload or a browser crash the website offers to continue.

@@ -9,6 +9,7 @@
   import Notice from "./components/Notice.svelte"
   import Icon from "./components/Icon.svelte"
   import Footer from "./components/Footer.svelte"
+  import HoverCardHost from "./items/HoverCardHost.svelte"
   import SaveSection from "./sections/Save.svelte"
   import VaultSection from "./sections/Vault.svelte"
   import DwellersSection from "./sections/Dwellers.svelte"
@@ -19,6 +20,7 @@
   import { MAX_FILE, openFile } from "./lib/files"
   import { readSession } from "./lib/session"
   import { hit } from "./lib/stats"
+  import { startRouting, syncRoute } from "./lib/route.svelte"
 
   let failed = $state(false)
   let pending: File | null = null
@@ -33,9 +35,10 @@
     app.init()
     const wanted = app.wantedLang()
     if (app.settings.lang !== "system" && wanted !== app.lang) {
-      location.replace(`/${wanted}/`)
+      location.replace(`/${wanted}/${location.pathname.split("/").slice(2).join("/")}`)
       return
     }
+    startRouting()
     app.ready = true
     hit("view")
     if (app.settings.keepSession) {
@@ -47,6 +50,11 @@
   $effect(() => {
     void app.rev
     if (!app.isOpen) ui.reset()
+  })
+
+  $effect(() => {
+    void [app.rev, app.section, app.vaultTab, app.otherTab, app.expert]
+    if (app.ready) syncRoute()
   })
 
   function dropped(file: File) {
@@ -133,6 +141,7 @@
   <Notice />
   <Modals />
   <Toasts />
+  <HoverCardHost />
 {/if}
 
 <style>

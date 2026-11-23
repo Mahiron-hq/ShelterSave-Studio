@@ -27,6 +27,9 @@
   const level = $derived<number>(d?.experience?.currentLevel ?? 1)
   const maxHp = $derived<number>(Math.floor(d?.health?.maxHealth ?? 100))
 
+  const inTeam = $derived(
+    arr(app.root, ["vault", "wasteland", "teams"]).some((t: any) => Array.isArray(t?.dwellers) && t.dwellers.includes(id)),
+  )
   const rooms = $derived(arr(app.root, ROOMS))
   const current = $derived(rooms.find((r) => Array.isArray(r?.dwellers) && r.dwellers.includes(id)))
   const roomItems = $derived([
@@ -50,7 +53,10 @@
     </div>
     <div class="row-wrap">
       {#if isDead(d)}
-        <button type="button" onclick={() => app.act({ action: "revive", ids: [id] })}><Icon name="sparkles" /> {app.t("dw.revive")}</button>
+        <button type="button" title={inTeam ? app.t("dw.reviveTeamHelp") : undefined} onclick={() => app.act({ action: "revive", ids: [id] })}><Icon name="sparkles" /> {app.t("dw.revive")}</button>
+        {#if inTeam}
+          <button type="button" title={app.t("dw.reviveHomeHelp")} onclick={() => app.act({ action: "revive", ids: [id], home: true })}><Icon name="sparkles" /> {app.t("dw.reviveHome")}</button>
+        {/if}
       {/if}
       <button type="button" title={app.t("dw.cloneHelp")} onclick={() => app.act({ action: "cloneDweller", id })}><Icon name="copy" /> {app.t("dw.clone")}</button>
       <button type="button" class="danger" onclick={() => app.push({ kind: "custom", id: "confirmDelete", data: [id] })}><Icon name="trash" /> {app.t("dw.delete")}</button>
@@ -129,7 +135,7 @@
     {#each [1, 2, 3, 4, 5, 6, 7] as s (s)}
       <NumField
         path={at("stats", "stats", s, "value")}
-        label="{SPECIAL_LETTERS[s - 1]} — {app.t(`dw.specialName.${s}`)}"
+        label="{SPECIAL_LETTERS[s - 1]} – {app.t(`dw.specialName.${s}`)}"
         help={app.t(`dw.specialHelp.${s}`)}
         min={lim.specialMin}
         max={lim.specialMax}

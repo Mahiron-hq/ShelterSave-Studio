@@ -42,6 +42,16 @@ self.addEventListener("fetch", (event) => {
         }
         return res
       })
-      .catch(() => caches.match(req).then((hit) => hit || Response.error())),
+      .catch(() =>
+        caches.match(req).then((hit) => {
+          if (hit) return hit
+          // Editor sections (/ru/vault/rooms) are the same page as the language root.
+          const lang = url.pathname.split("/")[1]
+          if (req.mode === "navigate" && (lang === "ru" || lang === "en")) {
+            return caches.match(new URL(`/${lang}/`, location.origin)).then((root) => root || Response.error())
+          }
+          return Response.error()
+        }),
+      ),
   )
 })

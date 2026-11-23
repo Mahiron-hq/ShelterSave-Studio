@@ -601,6 +601,29 @@ fn wasteland(app: &mut App, ui: &mut egui::Ui) {
                 s => s,
             };
             info(ui, &app.t("o.status"), &status_text);
+            if vault::team_dead(&r, t) {
+                let ids: Vec<i64> = vault::arr(t, &["dwellers"])
+                    .iter()
+                    .filter_map(Value::as_i64)
+                    .collect();
+                ui.horizontal_wrapped(|ui| {
+                    for (key, help, home) in [
+                        ("o.reviveTeam", "dw.reviveTeamHelp", false),
+                        ("dw.reviveHome", "dw.reviveHomeHelp", true),
+                    ] {
+                        if ui
+                            .button(format!("{}  {}", icons::SPARKLES, app.t(key)))
+                            .on_hover_text(app.t(help))
+                            .clicked()
+                        {
+                            app.act(Action::Revive {
+                                ids: ids.clone(),
+                                home,
+                            });
+                        }
+                    }
+                });
+            }
             let base = pi(&["vault", "wasteland", "teams"], i, &[]);
             let num = |k: &str| t.get(k).and_then(Value::as_f64);
             if let Some(s) = num("elapsedTimeAliveExploring") {

@@ -4,11 +4,11 @@
 
 ## Независимый проект
 
-ShelterSave-Studio — независимый проект с открытым кодом. Он не связан с ZeniMax Media Inc., Bethesda Softworks LLC, Bethesda Game Studios, Behaviour Interactive Inc. и Microsoft Corporation, не одобрен и не поддерживается ими.
+ShelterSave-Studio – независимый проект с открытым кодом. Он не связан с ZeniMax Media Inc., Bethesda Softworks LLC, Bethesda Game Studios, Behaviour Interactive Inc. и Microsoft Corporation, не одобрен и не поддерживается ими.
 
 ## Товарные знаки
 
-Fallout Shelter разработана Bethesda Game Studios при участии Behaviour Interactive. Издатель — Bethesda Softworks LLC, компания группы ZeniMax Media (с 2021 года входит в Microsoft).
+Fallout Shelter разработана Bethesda Game Studios при участии Behaviour Interactive. Издатель – Bethesda Softworks LLC, компания группы ZeniMax Media (с 2021 года входит в Microsoft).
 
 Fallout, Fallout Shelter и связанные логотипы являются товарными знаками или зарегистрированными товарными знаками Bethesda Softworks LLC в США и других странах. Bethesda, Bethesda Softworks, Bethesda Game Studios и ZeniMax являются товарными знаками или зарегистрированными товарными знаками ZeniMax Media Inc. Все другие товарные знаки принадлежат их владельцам.
 

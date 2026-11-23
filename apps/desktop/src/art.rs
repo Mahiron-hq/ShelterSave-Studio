@@ -123,9 +123,6 @@ pub enum Status {
 /// Rendered dwellers kept as textures.
 const RENDER_CACHE: usize = 48;
 
-/// Decoded dweller textures kept in memory (each is 4 MB or more).
-const IMAGE_CACHE: usize = 12;
-
 #[derive(Default)]
 struct Shared {
     probed: bool,
@@ -134,9 +131,6 @@ struct Shared {
     mismatch: bool,
     /// Textures the dweller preview is drawn from, by name.
     images: HashMap<String, Arc<Image>>,
-    /// When each texture was last used for a preview.
-    image_use: HashMap<String, u64>,
-    tick: u64,
     /// Item pictures cut from an atlas and not yet turned into textures.
     icons: HashMap<String, Image>,
     /// Atlases already cut into item pictures.
@@ -259,15 +253,6 @@ impl Store {
             return Some(t);
         }
         if !s.rendering {
-            s.tick += 1;
-            // With no images every texture of the look is reported missing.
-            if let Err(all) = Parts::new(&HashMap::new(), look) {
-                for name in all {
-                    if s.images.contains_key(&name) {
-                        s.image_use.insert(name, s.tick);
-                    }
-                }
-            }
             let gender = if look.male { "male" } else { "female" };
             let mesh = s.meshes.get(gender).cloned();
             match (Parts::new(&s.images, look), mesh) {
@@ -337,25 +322,9 @@ fn load_textures(
                 Some(i) => {
                     s.requested.remove(name);
                     s.images.insert(name.clone(), Arc::new(i));
-                    let tick = s.tick;
-                    s.image_use.insert(name.clone(), tick);
                 }
                 None => s.mismatch = true,
             }
-        }
-    }
-    if let Ok(mut s) = shared.lock() {
-        let s = &mut *s;
-        while s.images.len() > IMAGE_CACHE {
-            let oldest = s
-                .images
-                .keys()
-                .filter(|n| !names.contains(n))
-                .min_by_key(|n| s.image_use.get(*n).copied().unwrap_or(0))
-                .cloned();
-            let Some(oldest) = oldest else { break };
-            s.images.remove(&oldest);
-            s.image_use.remove(&oldest);
         }
     }
     ctx.request_repaint();
@@ -451,14 +420,18 @@ fn load_all(shared: &Mutex<Shared>, ctx: &egui::Context, custom: Option<String>)
         s.texts = texts;
     }
     ctx.request_repaint();
-    // Pictures are decoded when first shown; here only their checksums are compared.
-    let atlases = shelter_art::icons_by_atlas().into_iter().map(|(t, _)| t);
+    // Dweller textures are decoded when first shown; here only their checksums are compared.
     if !dweller::base_textures()
         .into_iter()
-        .chain(atlases)
         .all(|t| texture_ok(&bundle, &t))
     {
         mismatch();
+    }
+    for (atlas, _) in shelter_art::icons_by_atlas() {
+        let fresh = shared.lock().is_ok_and(|mut s| s.cut.insert(atlas.clone()));
+        if fresh {
+            cut_atlas(shared, ctx, &bundle, &atlas);
+        }
     }
     ctx.request_repaint();
 }

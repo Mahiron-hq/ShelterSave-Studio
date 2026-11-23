@@ -19,7 +19,7 @@ use std::path::PathBuf;
 fn main() {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("out dir"));
     println!("cargo:rerun-if-env-changed=SHELTER_PAYLOAD");
-    println!("cargo:rerun-if-changed=../../assets/app-icon.ico");
+    println!("cargo:rerun-if-changed=../../assets/installer-icon.ico");
     // The program to install; without it the installer only shows an error.
     let payload = std::env::var_os("SHELTER_PAYLOAD").map(PathBuf::from);
     match payload {
@@ -33,7 +33,7 @@ fn main() {
         return;
     }
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("../../assets/app-icon.ico")
+    res.set_icon("../../assets/installer-icon.ico")
         .set("ProductName", "ShelterSave-Studio")
         .set("FileDescription", "ShelterSave-Studio setup")
         .set("CompanyName", "Lev Burmistrov (Mahiron-hq)")

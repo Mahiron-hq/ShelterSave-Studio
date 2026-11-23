@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "../../components/Icon.svelte"
+  import Check from "../../components/Check.svelte"
   import MapView from "../../rooms/MapView.svelte"
   import AddPanel from "../../rooms/AddPanel.svelte"
   import RoomEditor from "../../rooms/RoomEditor.svelte"
@@ -48,6 +49,11 @@
         >
       {/if}
     </section>
+    {#if app.expert}
+      <section class="panel" title={app.t("room.keepApartHelp")}>
+        <Check checked={ui.keepApart} label={app.t("room.keepApart")} onchange={(v) => (ui.keepApart = v)} />
+      </section>
+    {/if}
   </aside>
 </div>
 

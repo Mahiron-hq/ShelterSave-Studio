@@ -498,6 +498,7 @@ fn item_card(app: &mut App, ui: &mut egui::Ui, kind: ItemKind, id: &str) {
         .as_ref()
         .is_some_and(|a| a.icons.contains_key(&format!("{}:{id}", kind.as_str())));
     ui.set_max_width(340.0);
+    ui.spacing_mut().item_spacing = egui::vec2(8.0, 2.0);
     ui.horizontal_top(|ui| {
         if let Some(t) = &icon {
             let size = t.size_vec2();
@@ -632,7 +633,6 @@ fn price_lines(
                 format!("{name} × {n}")
             })
             .collect();
-        ui.add_space(4.0);
         ui.label(app.tf("card.craft", &[("caps", widgets::fmt_num(cr.caps as f64))]));
         if !junk.is_empty() {
             ui.add(egui::Label::new(RichText::new(junk.join(", ")).small().color(c.muted)).wrap());
@@ -670,6 +670,7 @@ fn theme_card(app: &mut App, ui: &mut egui::Ui, id: &str) {
         .as_ref()
         .map(|o| shelter_core::actions::theme_state(o.doc.root(), id));
     ui.set_max_width(340.0);
+    ui.spacing_mut().item_spacing = egui::vec2(8.0, 2.0);
     ui.horizontal_top(|ui| {
         if let Some(tex) = &icon {
             let size = tex.size_vec2();
@@ -1187,6 +1188,7 @@ fn map_view(app: &mut App, ui: &mut egui::Ui, root: &Value) {
                             room: r.id,
                             row,
                             col,
+                            apart: app.keep_apart,
                         });
                     }
                 }
@@ -1504,6 +1506,7 @@ fn add_panel(app: &mut App, ui: &mut egui::Ui, root: &Value) {
             merge: add.merge,
             level: add.level,
             unlock: locked,
+            apart: app.keep_apart,
         };
         if app.act(action) {
             if !add.copy {
@@ -1513,7 +1516,7 @@ fn add_panel(app: &mut App, ui: &mut egui::Ui, root: &Value) {
             app.room_sel = app.open.as_ref().and_then(|o| {
                 map::rooms(o.doc.root())
                     .into_iter()
-                    .find(|r| r.row == add.row && r.col == col)
+                    .find(|r| r.row == add.row && r.col <= col && col < r.end())
                     .map(|r| r.id)
             });
         }
@@ -1568,6 +1571,13 @@ fn rooms(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.add_space(10.0);
                 rocks(app, ui, &root);
+                if app.mode() == Mode::Expert {
+                    ui.add_space(10.0);
+                    panel(ui, |ui| {
+                        let (label, help) = (app.t("room.keepApart"), app.t("room.keepApartHelp"));
+                        ui.checkbox(&mut app.keep_apart, label).on_hover_text(help);
+                    });
+                }
             });
     });
     ui.allocate_rect(full, Sense::hover());
@@ -1655,7 +1665,11 @@ fn room_editor(app: &mut App, ui: &mut egui::Ui, i: usize) {
                         .clicked()
                         && l != cur
                     {
-                        app.act(Action::SetRoomLevel { room: id, level: l });
+                        app.act(Action::SetRoomLevel {
+                            room: id,
+                            level: l,
+                            apart: app.keep_apart,
+                        });
                     }
                 }
             });
@@ -1694,10 +1708,51 @@ fn room_editor(app: &mut App, ui: &mut egui::Ui, i: usize) {
                         .clicked()
                         && m != cur
                     {
-                        app.act(Action::SetMergeLevel { room: id, merge: m });
+                        app.act(Action::SetMergeLevel {
+                            room: id,
+                            merge: m,
+                            apart: app.keep_apart,
+                        });
                     }
                 }
             });
+            let cur = vault::int(&r, &["mergeLevel"]).unwrap_or(1);
+            let options = shelter_core::actions::split_options(cur);
+            if !options.is_empty() {
+                let o = Opts::text(app.t("room.split")).help(app.t("room.splitHelp"));
+                widgets::row(app, ui, &merge_path, &o, |app, ui| {
+                    let mode = app.mode();
+                    for parts in options {
+                        let err = app.open.as_ref().and_then(|o| {
+                            shelter_core::actions::split_error(o.doc.root(), mode, id, &parts)
+                        });
+                        let why = match err {
+                            Some(shelter_core::rules::RuleError::RoomSize) => {
+                                app.t("room.splitSize")
+                            }
+                            Some(shelter_core::rules::RuleError::RoomBusy) => {
+                                app.t("room.splitBusy")
+                            }
+                            _ => String::new(),
+                        };
+                        let label = parts
+                            .iter()
+                            .map(i64::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" + ");
+                        if ui
+                            .add_enabled(err.is_none(), egui::Button::new(label))
+                            .on_disabled_hover_text(why)
+                            .clicked()
+                        {
+                            app.act(Action::SplitRoom {
+                                room: id,
+                                parts: parts.clone(),
+                            });
+                        }
+                    }
+                });
+            }
         }
         for (key, label) in [
             ("power", "room.power"),
@@ -2527,6 +2582,14 @@ fn themes(app: &mut App, ui: &mut egui::Ui) {
             };
             ui.label(RichText::new(title).font(style::bold(14.0)));
             theme_picker(app, ui, &root, room);
+            let cur = applied_theme(&root, room);
+            let (kind, pic) = theme_picture(room, cur.as_deref());
+            if !room_picture(app, ui, &kind, &pic, 420.0)
+                && app.art.status() == crate::art::Status::Ready
+                && !crate::art::Store::known(&kind, &pic)
+            {
+                muted_note(ui, &app.t("theme.noPicture"));
+            }
             egui::CollapsingHeader::new(app.t("theme.states"))
                 .id_salt(("theme_states", room))
                 .show(ui, |ui| {

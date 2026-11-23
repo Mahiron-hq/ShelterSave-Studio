@@ -391,7 +391,7 @@ fn mass_bar(app: &mut App, ui: &mut egui::Ui, root: &Value) {
     panel(ui, |ui| {
         ui.label(
             RichText::new(format!(
-                "{} — {}",
+                "{} – {}",
                 app.t("dw.mass"),
                 app.tf("c.selected", &[("n", n.to_string())])
             ))
@@ -431,7 +431,10 @@ fn mass_bar(app: &mut App, ui: &mut egui::Ui, root: &Value) {
                     (
                         icons::SPARKLES,
                         "dw.mass.revive",
-                        Action::Revive { ids: ids.clone() },
+                        Action::Revive {
+                            ids: ids.clone(),
+                            home: false,
+                        },
                     ),
                 ];
                 let any_dead = ids.iter().any(|id| {
@@ -573,12 +576,29 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            if vault::is_dead(&d)
-                && ui
-                    .button(format!("{}  {}", icons::SPARKLES, app.t("dw.revive")))
-                    .clicked()
-            {
-                app.act(Action::Revive { ids: vec![id] });
+            if vault::is_dead(&d) {
+                let in_team = vault::team_of(&root, id).is_some();
+                let mut b = ui.button(format!("{}  {}", icons::SPARKLES, app.t("dw.revive")));
+                if in_team {
+                    b = b.on_hover_text(app.t("dw.reviveTeamHelp"));
+                }
+                if b.clicked() {
+                    app.act(Action::Revive {
+                        ids: vec![id],
+                        home: false,
+                    });
+                }
+                if in_team
+                    && ui
+                        .button(format!("{}  {}", icons::SPARKLES, app.t("dw.reviveHome")))
+                        .on_hover_text(app.t("dw.reviveHomeHelp"))
+                        .clicked()
+                {
+                    app.act(Action::Revive {
+                        ids: vec![id],
+                        home: true,
+                    });
+                }
             }
             if ui
                 .button(format!("{}  {}", icons::COPY, app.t("dw.clone")))
@@ -726,7 +746,7 @@ fn card(app: &mut App, ui: &mut egui::Ui, id: i64) {
             path.push(Seg::Index(s));
             path.push(Seg::Key("value".into()));
             let label = app.t(&format!("dw.specialName.{s}"));
-            let o = Opts::text(format!("{} — {label}", SPECIAL_LETTERS[s - 1]))
+            let o = Opts::text(format!("{} – {label}", SPECIAL_LETTERS[s - 1]))
                 .help(app.t(&format!("dw.specialHelp.{s}")))
                 .range(lim.special_min as f64, lim.special_max as f64);
             widgets::num_field(app, ui, &path, o);

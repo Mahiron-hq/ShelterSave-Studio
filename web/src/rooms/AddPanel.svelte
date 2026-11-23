@@ -57,10 +57,10 @@
       }
       return
     }
-    if (app.act({ action: "addRoom", kind: a.kind, row: a.row, col, merge: a.merge, level: a.level, unlock: locked })) {
+    if (app.act({ action: "addRoom", kind: a.kind, row: a.row, col, merge: a.merge, level: a.level, unlock: locked, apart: ui.keepApart })) {
       if (!a.copy) roomsUi.last = { ...a }
       roomsUi.add = null
-      ui.roomSel = query<{ rooms: { id: number; row: number; col: number }[] }>("map").rooms.find((r) => r.row === a.row && r.col === col)?.id ?? null
+      ui.roomSel = query<{ rooms: { id: number; row: number; col: number; width: number }[] }>("map").rooms.find((r) => r.row === a.row && r.col <= col && col < r.col + r.width)?.id ?? null
     }
   }
   const level = $derived(describe(app.lang, ["vault", "rooms", 0, "level"]))

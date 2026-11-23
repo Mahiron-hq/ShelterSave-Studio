@@ -243,7 +243,9 @@ async fn file(method: Method, headers: HeaderMap, req: Request) -> Response {
             .body(Body::empty())
             .unwrap_or_default();
     }
-    let name = if rel.ends_with('/') || rel.is_empty() {
+    let name = if let Some(lang) = editor_route(rel) {
+        format!("{lang}/index.html")
+    } else if rel.ends_with('/') || rel.is_empty() {
         format!("{rel}index.html")
     } else {
         rel.to_string()
@@ -253,6 +255,27 @@ async fn file(method: Method, headers: HeaderMap, req: Request) -> Response {
         return not_found(lang, method);
     };
     serve_file(&name, f.contents(), &headers, method, StatusCode::OK)
+}
+
+/// Sections of the editor have their own addresses; all of them load the editor page.
+const EDITOR_SECTIONS: [&str; 4] = ["save", "vault", "dwellers", "other"];
+
+/// The language of an editor section address such as `ru/vault/rooms`.
+fn editor_route(rel: &str) -> Option<&'static str> {
+    let mut parts = rel.trim_end_matches('/').split('/');
+    let lang = match parts.next()? {
+        "ru" => "ru",
+        "en" => "en",
+        _ => return None,
+    };
+    let section = parts.next()?;
+    let tab = parts.next();
+    let ok = EDITOR_SECTIONS.contains(&section)
+        && parts.next().is_none()
+        && tab.is_none_or(|t| {
+            !t.is_empty() && t.len() <= 20 && t.bytes().all(|b| b.is_ascii_lowercase())
+        });
+    ok.then_some(lang)
 }
 
 fn not_found(lang: &str, method: Method) -> Response {
@@ -354,7 +377,7 @@ fn page_of(path: &str) -> Option<&'static str> {
         .strip_prefix("/en/")
         .or_else(|| path.strip_prefix("/ru/"))?;
     let name = rest.trim_end_matches('/');
-    if name.is_empty() {
+    if name.is_empty() || editor_route(path.trim_start_matches('/')).is_some() {
         return Some("editor");
     }
     stats::PAGES.iter().find(|p| **p == name).copied()

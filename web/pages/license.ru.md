@@ -1,6 +1,6 @@
 # Лицензия и открытый код
 
-ShelterSave-Studio — свободная программа. Её можно распространять и изменять на условиях GNU General Public License версии 3 или (по вашему выбору) любой более поздней версии.
+ShelterSave-Studio – свободная программа. Её можно распространять и изменять на условиях GNU General Public License версии 3 или (по вашему выбору) любой более поздней версии.
 
 Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
 
@@ -12,13 +12,13 @@ Copyright (C) 2026 Lev Burmistrov (Mahiron-hq)
 
 ## Сторонние компоненты сайта
 
-- Svelte — MIT License — https://svelte.dev
-- UI SDK — Apache License 2.0 — https://ui-sdk.dev
-- wasm-bindgen — MIT OR Apache-2.0 — https://github.com/rustwasm/wasm-bindgen
-- aes, cbc, base64, serde, serde_json (Rust) — MIT OR Apache-2.0
-- Шрифт Inter — SIL Open Font License 1.1 — https://rsms.me/inter/
-- Шрифт JetBrains Mono — SIL Open Font License 1.1 — https://www.jetbrains.com/lp/mono/
-- Значки Lucide — ISC License — https://lucide.dev
+- Svelte – MIT License – https://svelte.dev
+- UI SDK – Apache License 2.0 – https://ui-sdk.dev
+- wasm-bindgen – MIT OR Apache-2.0 – https://github.com/rustwasm/wasm-bindgen
+- aes, cbc, base64, serde, serde_json (Rust) – MIT OR Apache-2.0
+- Шрифт Inter – SIL Open Font License 1.1 – https://rsms.me/inter/
+- Шрифт JetBrains Mono – SIL Open Font License 1.1 – https://www.jetbrains.com/lp/mono/
+- Значки Lucide – ISC License – https://lucide.dev
 
 Сайт не загружает файлы с других доменов: все скрипты, стили, шрифты и данные отдаются с этого сервера.
 

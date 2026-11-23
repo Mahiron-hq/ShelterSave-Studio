@@ -41,7 +41,7 @@
   <GameFile />
 {:else if top?.kind === "about"}
   <Modal title={app.t("about.title")}>
-    <p><strong>{app.t("app.name")}</strong> — {app.t("app.tagline")}</p>
+    <p><strong>{app.t("app.name")}</strong> – {app.t("app.tagline")}</p>
     <p>{app.t("about.version", { v: "1.0.0" })}</p>
     <p>{app.t("app.copyright")}</p>
     <p>{app.t("about.license")}</p>

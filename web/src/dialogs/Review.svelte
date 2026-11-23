@@ -85,7 +85,7 @@
     <h3>{app.t("review.problems")}</h3>
     <ul class="list short">
       {#each [...report.newIssues.map((i) => [i, "integ.new"] as const), ...report.oldIssues.map((i) => [i, "integ.old"] as const)] as [i, label] (label + i.path + i.text)}
-        <li><Icon name="alert" /> <span>{i.text} — {app.t(label)}</span></li>
+        <li><Icon name="alert" /> <span>{i.text} – {app.t(label)}</span></li>
       {/each}
     </ul>
     <button type="button" onclick={() => app.act({ action: "fixIssues" })}><Icon name="wrench" /> {app.t("integ.fixAll")}</button>
@@ -95,7 +95,7 @@
     <h3>{app.t("review.warnings")}</h3>
     <ul class="list short warn">
       {#each [...report.newWarnings.map((w) => [w, "integ.new"] as const), ...report.oldWarnings.map((w) => [w, "integ.old"] as const)] as [w, label] (label + w.code + w.place + w.value)}
-        <li><Icon name="warn" /> <span>{app.t(`warn.${w.code}`)} · {w.place} = {w.value} — {app.t(label)}</span></li>
+        <li><Icon name="warn" /> <span>{app.t(`warn.${w.code}`)} · {w.place} = {w.value} – {app.t(label)}</span></li>
       {/each}
     </ul>
   {/if}

@@ -31,8 +31,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn run() -> eframe::Result {
     let uninstall = std::env::args().any(|a| a == "--uninstall");
-    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/app-icon.png"))
-        .unwrap_or_default();
+    let icon =
+        eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/installer-icon.png"))
+            .unwrap_or_default();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("ShelterSave-Studio")

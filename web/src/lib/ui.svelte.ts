@@ -15,6 +15,8 @@ class Ui {
     selected: new Set<string>(),
   })
   roomSel = $state<number | null>(null)
+  /** Expert mode: built or moved rooms do not merge with equal neighbours. */
+  keepApart = $state(false)
   rockSel = $state<[number, number] | null>(null)
   treeSearch = $state("")
 

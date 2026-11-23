@@ -35,7 +35,7 @@
 </script>
 
 <section class="panel">
-  <h3>{app.t("dw.mass")} — {app.t("c.selected", { n })}</h3>
+  <h3>{app.t("dw.mass")} – {app.t("c.selected", { n })}</h3>
   <div class="row-wrap">
     {#each actions as [icon, key, action] (key)}
       <button type="button" onclick={() => app.actMass(action, n)}><Icon name={icon} /> {app.t(key)}</button>

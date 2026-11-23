@@ -434,9 +434,22 @@ impl Editor {
                 let neighbours = map::placed(r)
                     .is_some_and(|me| !map::merge_neighbours(&map::rooms(root), &me).is_empty());
                 let (pk, pid) = shelter_core::pictures::room_picture(root, r);
+                let splits: Vec<J> = actions::split_options(merge)
+                    .into_iter()
+                    .map(|parts| {
+                        let error = match actions::split_error(root, self.mode, id, &parts) {
+                            None => J::Null,
+                            Some(shelter_core::rules::RuleError::RoomSize) => json!("size"),
+                            Some(shelter_core::rules::RuleError::RoomBusy) => json!("busy"),
+                            Some(_) => json!("other"),
+                        };
+                        json!({ "parts": parts, "error": error })
+                    })
+                    .collect();
                 json!({
                     "index": i,
                     "sizes": sizes,
+                    "splits": splits,
                     "maxLevel": map::max_level(&kind, merge),
                     "neighbours": neighbours,
                     "canRemove": map::can_remove(root, id),

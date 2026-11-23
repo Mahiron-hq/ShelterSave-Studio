@@ -30,7 +30,7 @@ use serde_json::Value;
 use crate::clock::{self, span_ru, stamp};
 use crate::config::Config;
 use crate::stats::Summary;
-use crate::telegram::Bot;
+use crate::telegram::{keyboard, Bot, Update};
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -50,6 +50,8 @@ pub struct State {
     pub cert_days: Option<i64>,
     pub cert_checked: i64,
     pub disk_free: Option<f64>,
+    /// When each stranger last got the access notice.
+    pub strangers: BTreeMap<i64, i64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -251,7 +253,11 @@ fn label(key: &str) -> &'static str {
 
 /// Turns a round into alerts: a problem needs `confirm_checks` failures in a
 /// row, repeats at most every `repeat_minutes`, and recovery is reported once.
-fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<String> {
+/// Problems that are only a nuisance: /mute silences them.
+const MINOR: [&str; 2] = ["local_slow", "public_slow"];
+
+/// Alerts with a flag: important ones are sent even while alerts are muted.
+fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<(String, bool)> {
     let mut out = Vec::new();
     let keys: Vec<String> = st
         .problems
@@ -271,12 +277,15 @@ fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<String
                         p.value = value.clone();
                         if now - p.alerted >= repeat {
                             p.alerted = now;
-                            out.push(format!(
-                                "Проблема: {} — всё ещё есть ({}), с {} ({}).",
-                                label(&key),
-                                value,
-                                stamp(p.since),
-                                span_ru(now - p.since)
+                            out.push((
+                                format!(
+                                    "Проблема: {} – всё ещё есть ({}), с {} ({}).",
+                                    label(&key),
+                                    value,
+                                    stamp(p.since),
+                                    span_ru(now - p.since)
+                                ),
+                                false,
                             ));
                         }
                     }
@@ -290,11 +299,14 @@ fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<String
                                 value: value.clone(),
                             },
                         );
-                        out.push(format!(
-                            "Проблема: {} — {} (с {}).",
-                            label(&key),
-                            value,
-                            stamp(since)
+                        out.push((
+                            format!(
+                                "Проблема: {} – {} (с {}).",
+                                label(&key),
+                                value,
+                                stamp(since)
+                            ),
+                            !MINOR.contains(&key.as_str()),
                         ));
                     }
                     None => {}
@@ -310,7 +322,7 @@ fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<String
                         stamp(p.since)
                     );
                     journal(cfg, &format!("{key} {} -> {}", stamp(p.since), stamp(now)));
-                    out.push(msg);
+                    out.push((msg, !MINOR.contains(&key.as_str())));
                 }
             }
         }
@@ -322,7 +334,10 @@ fn evaluate(cfg: &Config, st: &mut State, round: &Round, now: i64) -> Vec<String
         .and_then(Value::as_i64)
     {
         if st.service_started != 0 && started != st.service_started {
-            out.push(format!("Служба сайта перезапущена в {}.", stamp(started)));
+            out.push((
+                format!("Служба сайта перезапущена в {}.", stamp(started)),
+                true,
+            ));
             journal(cfg, &format!("restart {}", stamp(started)));
         }
         st.service_started = started;
@@ -376,7 +391,7 @@ fn status_text(cfg: &Config, st: &State) -> String {
     } else {
         for (k, p) in &st.problems {
             lines.push(format!(
-                "Проблема: {} — {} (с {}).",
+                "Проблема: {} – {} (с {}).",
                 label(k),
                 p.value,
                 stamp(p.since)
@@ -385,7 +400,7 @@ fn status_text(cfg: &Config, st: &State) -> String {
     }
     lines.push(match st.last_outage {
         Some((a, b)) => format!(
-            "Последний сбой: {} — {} ({}).",
+            "Последний сбой: {} – {} ({}).",
             stamp(a),
             stamp(b),
             span_ru(b - a)
@@ -399,21 +414,58 @@ fn status_text(cfg: &Config, st: &State) -> String {
         lines.push(format!("Сертификат истекает через {d} д."));
     }
     if st.mute_until > now {
-        lines.push(format!("Оповещения выключены до {}.", stamp(st.mute_until)));
+        lines.push(format!(
+            "Второстепенные оповещения приостановлены до {}.",
+            stamp(st.mute_until)
+        ));
     }
     lines.join("\n")
 }
 
-const HELP: &str = "Команды:\n/stats — краткая статистика\n/status — состояние сайта\n\
-/mute 2h — приостановить оповещения (минуты: 30m, часы: 2h, дни: 1d; без числа — 1 час)\n\
-/unmute — включить оповещения\n/help — эта справка";
+const HELP: &str = "Команды:\n/status – состояние сайта\n/stats – краткая статистика\n\
+/mute – приостановить второстепенные оповещения: срок можно выбрать кнопкой или написать \
+(30m, 2h, 1d)\n/unmute – включить все оповещения\n/help – эта справка\n\n\
+Важные оповещения (сайт недоступен, ошибки сервера, отключение сервера, сертификат, диск, \
+хранилище, восстановление после сбоя) приходят всегда, даже во время паузы. Пауза \
+глушит только медленные ответы и повторные напоминания о сбоях, которые ещё не устранены.";
+
+/// Shown once a day to anyone else who writes to the bot.
+const STRANGER_RU: &str = "УВЕДОМЛЕНИЕ СИСТЕМЫ КОНТРОЛЯ ДОСТУПА VAULT-TEC\n\
+Протокол: VT-77-Б\n\
+Статус: обращение зарегистрировано / доступ ограничен\n\n\
+Терминал зарегистрировал несанкционированное обращение к служебному каналу Смотрителя Убежища. \
+Автоматическая проверка не подтвердила принадлежность пользователя к учётной записи Смотрителя. \
+В соответствии с регламентом Vault-Tec доступ к служебным отчётам и сводкам заблокирован.\n\n\
+Если вы являетесь Смотрителем, используйте только авторизованный терминал. Vault-Tec не несёт \
+ответственности за последствия обращения к служебным каналам без соответствующего уровня допуска. \
+Повторные обращения могут быть зарегистрированы системой.\n\n\
+Общедоступный редактор сохранений Fallout Shelter:\nhttps://shelter.mahiron.online\n\n\
+Конец уведомления.";
+
+const STRANGER_EN: &str = "VAULT-TEC ACCESS CONTROL SYSTEM NOTICE\n\
+Protocol: VT-77-B\n\
+Status: request logged / access restricted\n\n\
+The terminal has logged an unauthorized request to the Vault Overseer's service channel. \
+Automatic verification did not confirm that the user belongs to the Overseer's account. \
+In accordance with Vault-Tec regulations, access to service reports and summaries is blocked.\n\n\
+If you are the Overseer, use an authorized terminal only. Vault-Tec is not responsible for the \
+consequences of accessing service channels without the appropriate clearance. \
+Repeated requests may be logged by the system.\n\n\
+Public Fallout Shelter save editor:\nhttps://shelter.mahiron.online\n\n\
+End of notice.";
+
+/// Pause lengths offered by /mute without an argument.
+const MUTE_CHOICES: [(&str, &str); 5] = [
+    ("30m", "30 минут"),
+    ("1h", "1 час"),
+    ("3h", "3 часа"),
+    ("12h", "12 часов"),
+    ("1d", "1 день"),
+];
 
 /// Parses "30m", "2h", "1d" or plain minutes.
 fn parse_span(s: &str) -> Option<i64> {
     let s = s.trim();
-    if s.is_empty() {
-        return Some(3600);
-    }
     let (n, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len()));
     let n: i64 = n.parse().ok()?;
     let k = match unit.trim() {
@@ -425,25 +477,46 @@ fn parse_span(s: &str) -> Option<i64> {
     Some((n * k).clamp(60, 30 * 86_400))
 }
 
-fn answer(cfg: &Config, state: &Mutex<State>, text: &str) -> String {
+fn mute(cfg: &Config, state: &Mutex<State>, secs: i64) -> String {
+    let until = clock::now_secs() + secs;
+    if let Ok(mut s) = state.lock() {
+        s.mute_until = until;
+        save_state(cfg, &s);
+    }
+    format!(
+        "Второстепенные оповещения приостановлены до {}. Важные будут приходить как обычно.",
+        stamp(until)
+    )
+}
+
+/// Reply to a command, with buttons to show under it.
+fn answer(cfg: &Config, state: &Mutex<State>, text: &str) -> (String, serde_json::Value) {
     let mut parts = text.trim().splitn(2, char::is_whitespace);
     let cmd = parts.next().unwrap_or("").split('@').next().unwrap_or("");
-    let arg = parts.next().unwrap_or("");
-    match cmd {
+    let arg = parts.next().unwrap_or("").trim();
+    let text = match cmd {
         "/stats" => stats_text(cfg),
         "/status" => state
             .lock()
             .map(|s| status_text(cfg, &s))
             .unwrap_or_default(),
+        "/mute" if arg.is_empty() => {
+            let row: Vec<serde_json::Value> = MUTE_CHOICES
+                .iter()
+                .map(|(code, label)| {
+                    serde_json::json!({ "text": label, "callback_data": format!("mute:{code}") })
+                })
+                .collect();
+            let markup = serde_json::json!({
+                "inline_keyboard": [row[..3].to_vec(), row[3..].to_vec()],
+            });
+            return (
+                "На сколько приостановить второстепенные оповещения?".into(),
+                markup,
+            );
+        }
         "/mute" => match parse_span(arg) {
-            Some(secs) => {
-                let until = clock::now_secs() + secs;
-                if let Ok(mut s) = state.lock() {
-                    s.mute_until = until;
-                    save_state(cfg, &s);
-                }
-                format!("Оповещения приостановлены до {}.", stamp(until))
-            }
+            Some(secs) => mute(cfg, state, secs),
             None => "Не понял срок. Пример: /mute 2h".into(),
         },
         "/unmute" => {
@@ -451,10 +524,32 @@ fn answer(cfg: &Config, state: &Mutex<State>, text: &str) -> String {
                 s.mute_until = 0;
                 save_state(cfg, &s);
             }
-            "Оповещения включены.".into()
+            "Все оповещения включены.".into()
         }
         _ => HELP.into(),
+    };
+    (text, keyboard())
+}
+
+/// A press on one of the /mute buttons.
+fn press(cfg: &Config, state: &Mutex<State>, data: &str) -> String {
+    match data.strip_prefix("mute:").and_then(parse_span) {
+        Some(secs) => mute(cfg, state, secs),
+        None => "Кнопка устарела.".into(),
     }
+}
+
+/// Whether a stranger should get the access notice now (once a day each).
+fn greet(state: &Mutex<State>, chat: i64, now: i64) -> bool {
+    let Ok(mut s) = state.lock() else {
+        return false;
+    };
+    s.strangers.retain(|_, t| now - *t < 86_400);
+    if s.strangers.len() > 10_000 || s.strangers.contains_key(&chat) {
+        return false;
+    }
+    s.strangers.insert(chat, now);
+    true
 }
 
 fn flush(cfg: &Config, bot: Option<&Bot>, state: &Mutex<State>) {
@@ -496,7 +591,7 @@ pub fn run(cfg: Config) -> Result<(), String> {
             let (from, to) = (s.last_beat, now);
             s.last_outage = Some((from, to));
             s.outbox.push(format!(
-                "Сервер вернулся после отключения. Простой: {} — {} ({}).",
+                "Сервер вернулся после отключения. Простой: {} – {} ({}).",
                 stamp(from),
                 stamp(to),
                 span_ru(to - from)
@@ -512,26 +607,50 @@ pub fn run(cfg: Config) -> Result<(), String> {
     if let Some(b) = bot.clone() {
         let cfg = cfg.clone();
         let state = state.clone();
-        std::thread::spawn(move || loop {
-            let offset = state.lock().map(|s| s.offset).unwrap_or(0);
-            match b.poll(offset) {
-                Ok((cmds, next)) => {
-                    for c in cmds {
-                        let reply = answer(&cfg, &state, &c.text);
-                        if b.send(&reply).is_err() {
-                            if let Ok(mut s) = state.lock() {
-                                s.outbox.push(reply);
+        std::thread::spawn(move || {
+            let mut ready = false;
+            loop {
+                if !ready {
+                    ready = b.setup().is_ok();
+                }
+                let offset = state.lock().map(|s| s.offset).unwrap_or(0);
+                match b.poll(offset) {
+                    Ok((updates, next)) => {
+                        for u in updates {
+                            match u {
+                                Update::Command(text) => {
+                                    let (reply, markup) = answer(&cfg, &state, &text);
+                                    if b.send_to(b.admin, &reply, Some(markup)).is_err() {
+                                        if let Ok(mut s) = state.lock() {
+                                            s.outbox.push(reply);
+                                        }
+                                    }
+                                }
+                                Update::Button { id, message, data } => {
+                                    let reply = press(&cfg, &state, &data);
+                                    if b.answer_button(&id, message, &reply).is_err() {
+                                        if let Ok(mut s) = state.lock() {
+                                            s.outbox.push(reply);
+                                        }
+                                    }
+                                }
+                                Update::Stranger { chat, russian } => {
+                                    if greet(&state, chat, clock::now_secs()) {
+                                        let text = if russian { STRANGER_RU } else { STRANGER_EN };
+                                        let _ = b.send_to(chat, text, None);
+                                    }
+                                }
                             }
                         }
+                        if let Ok(mut s) = state.lock() {
+                            s.offset = next;
+                            save_state(&cfg, &s);
+                        }
                     }
-                    if let Ok(mut s) = state.lock() {
-                        s.offset = next;
-                        save_state(&cfg, &s);
+                    Err(e) => {
+                        eprintln!("telegram: {e}");
+                        std::thread::sleep(Duration::from_secs(30));
                     }
-                }
-                Err(e) => {
-                    eprintln!("telegram: {e}");
-                    std::thread::sleep(Duration::from_secs(30));
                 }
             }
         });
@@ -554,9 +673,10 @@ pub fn run(cfg: Config) -> Result<(), String> {
             s.mute_until = shared.mute_until;
             s.offset = shared.offset;
             s.outbox = std::mem::take(&mut shared.outbox);
-            for m in msgs {
+            s.strangers = std::mem::take(&mut shared.strangers);
+            for (m, important) in msgs {
                 eprintln!("{m}");
-                if s.mute_until <= now || m.starts_with("Восстановлено") {
+                if important || s.mute_until <= now {
                     s.outbox.push(m);
                 }
             }
@@ -613,7 +733,7 @@ mod tests {
         assert_eq!(m.len(), 1);
         assert!(evaluate(&cfg, &mut st, &failing("x"), 1120).is_empty());
         let m = evaluate(&cfg, &mut st, &ok, 1180);
-        assert!(m[0].starts_with("Восстановлено"));
+        assert!(m[0].0.starts_with("Восстановлено") && m[0].1);
         assert!(evaluate(&cfg, &mut st, &ok, 1240).is_empty());
         let _ = std::fs::remove_dir_all(&cfg.data_dir);
     }
@@ -621,7 +741,6 @@ mod tests {
     #[test]
     fn spans_and_commands() {
         assert_eq!(parse_span("2h"), Some(7200));
-        assert_eq!(parse_span(""), Some(3600));
         assert_eq!(parse_span("30m"), Some(1800));
         assert_eq!(parse_span("abc"), None);
     }

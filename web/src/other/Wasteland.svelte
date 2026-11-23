@@ -14,11 +14,17 @@
   import ThemeCard from "../rooms/ThemeCard.svelte"
   import { catalog, consts, core, describe, item, nameOf, pathStr, query, type ItemKind } from "../lib/core"
   import { app } from "../lib/state.svelte"
-  import { ACTORS, arr } from "../lib/vault"
+  import { ACTORS, arr, DWELLERS, isDead } from "../lib/vault"
   import { nameAny } from "./names"
 
   const teams = $derived(arr(app.root, ["vault", "wasteland", "teams"]))
   let asRecipe = $state(false)
+
+  function teamDead(t: any): boolean {
+    if (t?.status === "Dead" || t?.status === "DeadOnQuest") return true
+    const ids: unknown[] = Array.isArray(t?.dwellers) ? t.dwellers : []
+    return arr(app.root, DWELLERS).some((d: any) => ids.includes(d?.serializeId) && isDead(d))
+  }
 
   function statusText(s: string): string {
     const k = `o.team.${s}`
@@ -77,6 +83,13 @@
   <section class="panel">
     <h3>{(t.dwellers ?? []).filter((x: unknown) => typeof x === "number").map((d: number) => nameAny(d)).join(", ")}</h3>
     <p><span class="muted">{app.t("o.status")}</span> {statusText(status)}</p>
+    {#if teamDead(t)}
+      {@const ids = (t.dwellers ?? []).filter((x: unknown) => typeof x === "number")}
+      <div class="row-wrap">
+        <button type="button" title={app.t("dw.reviveTeamHelp")} onclick={() => app.act({ action: "revive", ids })}><Icon name="sparkles" /> {app.t("o.reviveTeam")}</button>
+        <button type="button" title={app.t("dw.reviveHomeHelp")} onclick={() => app.act({ action: "revive", ids, home: true })}><Icon name="sparkles" /> {app.t("dw.reviveHome")}</button>
+      </div>
+    {/if}
     {#if typeof t.elapsedTimeAliveExploring === "number"}
       {#if status === "Exploring" || status === "GoingToQuest"}
         <DurationRow

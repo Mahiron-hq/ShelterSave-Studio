@@ -55,15 +55,17 @@ Check: `curl -I https://shelter.mahiron.online/en/` returns 200 with `content-se
 3. Put `token` and `admin_id` into the `[telegram]` section of the config and restart the watchdog: `sudo systemctl restart shelter-watch`.
 4. Send `/help` to the bot.
 
-The bot answers only you, only in a private chat, and ignores everyone else. It uses outgoing connections only: no incoming ports are needed.
+The bot takes commands only from you and only in a private chat. Anyone else gets a joke "access denied" notice with a link to the site, once a day. It uses outgoing connections only: no incoming ports are needed.
 
-Commands:
+Commands appear in the bot menu and are suggested as soon as you type `/`. Buttons with the commands sit under the input field.
 
-- `/stats`: short statistics;
 - `/status`: site status;
-- `/mute 2h`: pause alerts;
-- `/unmute`: resume alerts;
+- `/stats`: short statistics;
+- `/mute`: pause minor alerts; pick the length with a button or type it right away (`/mute 2h`, `30m`, `1d`);
+- `/unmute`: resume all alerts;
 - `/help`: list of commands.
+
+Important alerts always arrive, even during a pause: site unavailable, server errors, server outage, service restart, certificate, disk, statistics storage, recovery after a failure. A pause silences only slow responses and repeated reminders about failures that are still going on. If Telegram cannot be reached, messages are kept and sent when the connection is back.
 
 ## 6. Full statistics
 

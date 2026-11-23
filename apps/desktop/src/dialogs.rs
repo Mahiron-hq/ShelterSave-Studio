@@ -298,7 +298,7 @@ fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                     for i in list.iter() {
                         ui.add(
                             egui::Label::new(format!(
-                                "{}  {} — {}",
+                                "{}  {} – {}",
                                 icons::ALERT,
                                 crate::sec_save::issue_text(app, i),
                                 label
@@ -335,7 +335,7 @@ fn review(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                         ui.add(
                             egui::Label::new(
                                 RichText::new(format!(
-                                    "{}  {} · {} = {} — {}",
+                                    "{}  {} · {} = {} – {}",
                                     icons::WARN,
                                     app.t(&format!("warn.{}", w.code)),
                                     place,
@@ -839,7 +839,7 @@ fn journal(app: &mut App, ui: &mut egui::Ui) -> Outcome {
                 if ui
                     .selectable_label(
                         false,
-                        RichText::new(format!("{n}. {l} — {}", app.t("journal.undone")))
+                        RichText::new(format!("{n}. {l} – {}", app.t("journal.undone")))
                             .color(c.muted),
                     )
                     .clicked()

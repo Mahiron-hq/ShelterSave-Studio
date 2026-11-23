@@ -4,7 +4,7 @@
 
 ## 1. Что это
 
-ShelterSave-Studio — бесплатный редактор файлов сохранений одиночной игры Fallout Shelter: сайт shelter.mahiron.online и программа для компьютера. Автор и оператор сайта — Lev Burmistrov (Mahiron-hq), Россия, Mahiron.HQ@protonmail.com.
+ShelterSave-Studio – бесплатный редактор файлов сохранений одиночной игры Fallout Shelter: сайт shelter.mahiron.online и программа для компьютера. Автор и оператор сайта – Lev Burmistrov (Mahiron-hq), Россия, Mahiron.HQ@protonmail.com.
 
 ## 2. Лицензия
 
@@ -27,7 +27,7 @@ ShelterSave-Studio — бесплатный редактор файлов сох
 
 ## 6. Правообладатели игры
 
-Проект независимый и не связан с правообладателями Fallout Shelter. Подробности — на странице [«Отказ от ответственности и товарные знаки»](/ru/disclaimer/).
+Проект независимый и не связан с правообладателями Fallout Shelter. Подробности – на странице [«Отказ от ответственности и товарные знаки»](/ru/disclaimer/).
 
 ## 7. Применимое право
 

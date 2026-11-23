@@ -179,11 +179,11 @@ for (const lang of LANGS) {
     const src = p.src ? p.src(lang) : join(web, "pages", `${p.slug}.${lang}.md`)
     if (!existsSync(src)) throw new Error(`missing ${src}`)
     const md = readFileSync(src, "utf8")
-    const title = `${t(lang, p.key)} — ShelterSave-Studio`
+    const title = `${t(lang, p.key)} – ShelterSave-Studio`
     write(`${lang}/${p.slug}/index.html`, page(lang, `${p.slug}/`, title, t(lang, `${p.key}Desc`), markdown(md)))
   }
   const nf = markdown(readFileSync(join(web, "pages", `404.${lang}.md`), "utf8"))
-  write(`${lang}/404.html`, page(lang, "", `${t(lang, "page.404")} — ShelterSave-Studio`, t(lang, "page.404"), nf, { current: "", noindex: true }))
+  write(`${lang}/404.html`, page(lang, "", `${t(lang, "page.404")} – ShelterSave-Studio`, t(lang, "page.404"), nf, { current: "", noindex: true }))
 }
 
 const urls = ["", ...PAGES.map((p) => `${p.slug}/`)]

@@ -177,6 +177,8 @@ pub struct App {
     /// Type, size and level of the last thing built, offered again on the next empty cell.
     pub last_add: Option<crate::sec_vault::MapAdd>,
     pub map_drag: Option<crate::sec_vault::MapDrag>,
+    /// Expert mode: built or moved rooms do not merge with equal neighbours.
+    pub keep_apart: bool,
     pub tree_search: String,
     pub tree_edit: HashMap<String, String>,
     pub bufs: HashMap<String, String>,
@@ -258,6 +260,7 @@ impl App {
             map_add: None,
             last_add: None,
             map_drag: None,
+            keep_apart: false,
             tree_search: String::new(),
             tree_edit: HashMap::new(),
             bufs: HashMap::new(),

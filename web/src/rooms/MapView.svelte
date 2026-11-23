@@ -99,7 +99,7 @@
     const d = drag
     if (!d || d.keys) return
     drag = null
-    if (d.moved && (d.row !== r.row || d.col !== r.col)) app.act({ action: "moveRoom", room: r.id, row: d.row, col: d.col })
+    if (d.moved && (d.row !== r.row || d.col !== r.col)) app.act({ action: "moveRoom", room: r.id, row: d.row, col: d.col, apart: ui.keepApart })
     else select(r)
   }
   function select(r: Placed) {
@@ -120,7 +120,7 @@
     } else if (d && e.key === "Enter") {
       e.preventDefault()
       drag = null
-      if (d.row !== r.row || d.col !== r.col) app.act({ action: "moveRoom", room: r.id, row: d.row, col: d.col })
+      if (d.row !== r.row || d.col !== r.col) app.act({ action: "moveRoom", room: r.id, row: d.row, col: d.col, apart: ui.keepApart })
     } else if (d && e.key === "Escape") {
       e.preventDefault()
       drag = null
