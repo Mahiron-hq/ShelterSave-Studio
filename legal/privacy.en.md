@@ -8,13 +8,13 @@ The operator of the website shelter.mahiron.online and the author of the Shelter
 
 ## 2. The desktop program
 
-The ShelterSave-Studio desktop program does not collect, store or send any data about you. It never connects to the network: it has no telemetry, no update checks and no downloads. Links open in your browser only when you click them. Settings, the list of recent files and backup copies of your saves stay on your computer, in your user profile. The program reads game pictures from the game installed on your computer; these files are only read and never sent anywhere.
+The ShelterSave-Studio desktop program does not collect, store or send any data about you. It never connects to the network: it has no telemetry, no update checks and no downloads. Links open in your browser only when you click them. Settings, the list of recent files and backup copies of your saves stay on your computer, in your user profile. The program reads game pictures and wasteland journal phrases from the game installed on your computer; these files are only read and never sent anywhere.
 
 ## 3. The website: what is processed
 
 **Your save file.** It is decrypted, edited and encrypted only in your browser. Its contents are never sent to the server or anywhere else.
 
-**The game file for pictures.** If you choose the file of your own installed game to see pictures, the browser reads the parts it needs only on your device. Neither the file nor the pictures are sent to the server or stored in the browser. The website does not store or serve pictures or other files of the game.
+**The game file for pictures.** If you choose the file of your own installed game to see pictures and wasteland journal phrases, the browser reads the parts it needs only on your device. Neither the file nor the pictures and phrases are sent to the server or stored in the browser. The website does not store or serve pictures or other files of the game.
 
 **Visit counting.** When a page is opened, the server briefly uses your IP address and the User-Agent string of your browser to compute a one-way hash with a random salt. The salt exists only in the server's memory and is replaced every day at 00:00 UTC; the previous salt is destroyed. The hashes of the current day are kept only in memory and are erased together with the salt. After the day ends only the number of distinct visitors remains. Your IP address is held in memory only for computing the hash and for limiting the request rate, and is never written to disk or to logs.
 

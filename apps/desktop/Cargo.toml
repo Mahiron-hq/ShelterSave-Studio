@@ -9,6 +9,8 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+build = "build.rs"
+
 [[bin]]
 name = "shelter-save-studio"
 path = "src/main.rs"
@@ -23,3 +25,30 @@ dirs = "7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[build-dependencies]
+winresource = "0.1"
+
+[package.metadata.deb]
+name = "shelter-save-studio"
+maintainer = "Lev Burmistrov (Mahiron-hq) <Mahiron.HQ@protonmail.com>"
+copyright = "2026, Lev Burmistrov (Mahiron-hq)"
+license-file = ["../../LICENSE", "0"]
+extended-description = "Editor for Fallout Shelter save files. Works offline."
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/shelter-save-studio", "usr/bin/", "755"],
+    ["../../packaging/linux/shelter-save-studio.desktop", "usr/share/applications/", "644"],
+    ["../../assets/app-icon.png", "usr/share/icons/hicolor/256x256/apps/shelter-save-studio.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "shelter-save-studio"
+summary = "Editor for Fallout Shelter save files"
+assets = [
+    { source = "target/release/shelter-save-studio", dest = "/usr/bin/shelter-save-studio", mode = "755" },
+    { source = "../../packaging/linux/shelter-save-studio.desktop", dest = "/usr/share/applications/shelter-save-studio.desktop", mode = "644" },
+    { source = "../../assets/app-icon.png", dest = "/usr/share/icons/hicolor/256x256/apps/shelter-save-studio.png", mode = "644" },
+]

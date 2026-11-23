@@ -26,6 +26,6 @@ Every file comes with a SHA-256 checksum.
 The builds are not signed with a developer certificate, so the system may warn about an unknown publisher.
 
 - **Windows:** in the SmartScreen window press "More info", then "Run anyway".
-- **macOS:** open the program with right click → "Open", then confirm.
+- **macOS 15 and newer:** close the message that the program could not be verified, open System Settings → Privacy & Security and press "Open Anyway". On macOS 11–14 open the program with right click → "Open", then confirm.
 
 You can check that a file was not altered with its SHA-256 checksum from the release page.

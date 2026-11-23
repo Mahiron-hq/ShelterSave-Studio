@@ -7,13 +7,15 @@ For the server owner: Debian (current stable release), x64. The website is one e
 - A Debian server with root access.
 - A subdomain pointing to the server, for example `shelter.mahiron.online`.
 - nginx and a TLS certificate, for example from Let's Encrypt with `certbot`.
-- The file `shelter-site-1.0.0-linux-x64` from the [GitHub release](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest). Compare its SHA-256 checksum with the release page: `sha256sum shelter-site-1.0.0-linux-x64`.
+- The archive `ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz` from the [GitHub release](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest). Compare its SHA-256 checksum with the release file `SHA256SUMS.txt`: `sha256sum ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz`. The archive holds the program, this guide and sample settings.
 
 ## 2. User and files
 
 ```
+tar xzf ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz
+cd ShelterSave-Studio-1.0.0-server-linux-x64
 sudo useradd --system --home /var/lib/shelter-site --shell /usr/sbin/nologin shelter-site
-sudo install -m 755 shelter-site-1.0.0-linux-x64 /usr/local/bin/shelter-site
+sudo install -m 755 shelter-site /usr/local/bin/shelter-site
 sudo install -d -m 750 -o root -g shelter-site /etc/shelter-site
 sudo install -m 640 -o root -g shelter-site config.example.toml /etc/shelter-site/config.toml
 ```
@@ -76,9 +78,9 @@ Formats: `text`, `csv`, `json`. Visitors are unique within one UTC day; monthly 
 
 ## 7. Updating
 
-1. Download the new build and check its SHA-256.
+1. Download the new archive, check its SHA-256 and unpack it.
 2. Keep the current one: `sudo cp /usr/local/bin/shelter-site /usr/local/bin/shelter-site.prev`.
-3. Install the new one: `sudo install -m 755 shelter-site-<version>-linux-x64 /usr/local/bin/shelter-site`.
+3. Install the new one from the archive folder: `sudo install -m 755 shelter-site /usr/local/bin/shelter-site`.
 4. Restart: `sudo systemctl restart shelter-site shelter-watch`.
 
 ## 8. Rolling back

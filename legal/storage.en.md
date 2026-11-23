@@ -16,7 +16,7 @@ This data stays on your device only and is never sent to the server. It is not u
 
 ## Pictures from the game file
 
-If you load the file of your game to see pictures, the file is read only in the open tab. Neither the file nor the pictures are stored in the browser: they are gone when you close the tab.
+If you load the file of your game to see pictures and wasteland journal phrases, the file is read only in the open tab. Neither the file nor the pictures and phrases are stored in the browser: they are gone when you close the tab.
 
 ## How to delete it
 

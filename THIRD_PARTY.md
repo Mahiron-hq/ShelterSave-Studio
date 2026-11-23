@@ -8,6 +8,22 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - JetBrains Mono 2.304 — SIL Open Font License 1.1 — https://www.jetbrains.com/lp/mono/
 - Lucide icons 0.468.0 — ISC License — https://lucide.dev
 
+## Website (JavaScript)
+
+Included in the website:
+
+- @ui-sdk/core 0.1.0-beta.10 — Apache-2.0
+- @ui-sdk/svelte 0.1.0-beta.10 — Apache-2.0
+- svelte 5.58.0 — MIT
+
+Used only to build and check it:
+
+- @sveltejs/vite-plugin-svelte 7.3.1 — MIT
+- playwright 1.65.1 — Apache-2.0
+- svelte-check 4.7.8 — MIT
+- typescript 5.9.3 — Apache-2.0
+- vite 8.3.8 — MIT
+
 ## Rust crates
 
 - accesskit 0.25.2 — MIT OR Apache-2.0
@@ -27,6 +43,9 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - arboard 3.7.0 — MIT OR Apache-2.0
 - arrayvec 0.7.8 — MIT OR Apache-2.0
 - as-raw-xcb-connection 1.0.1 — MIT OR Apache-2.0
+- asn1-rs 0.7.2 — MIT OR Apache-2.0
+- asn1-rs-derive 0.6.0 — MIT OR Apache-2.0
+- asn1-rs-impl 0.2.0 — MIT/Apache-2.0
 - async-broadcast 0.7.2 — MIT OR Apache-2.0
 - async-channel 2.5.0 — Apache-2.0 OR MIT
 - async-executor 1.14.1 — Apache-2.0 OR MIT
@@ -42,11 +61,15 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - atspi-common 0.13.0 — Apache-2.0 OR MIT
 - atspi-proxies 0.13.0 — Apache-2.0 OR MIT
 - autocfg 1.5.1 — Apache-2.0 OR MIT
+- axum 0.8.9 — MIT
+- axum-core 0.5.6 — MIT
 - base64 0.22.1 — MIT OR Apache-2.0
+- base64 0.23.1 — MIT OR Apache-2.0
 - bit-set 0.10.0 — Apache-2.0 OR MIT
 - bit-vec 0.9.1 — Apache-2.0 OR MIT
 - bitflags 1.3.2 — MIT/Apache-2.0
 - bitflags 2.13.2 — MIT OR Apache-2.0
+- block-buffer 0.12.1 — MIT OR Apache-2.0
 - block-padding 0.3.3 — MIT OR Apache-2.0
 - block2 0.5.1 — MIT
 - block2 0.6.2 — MIT
@@ -72,16 +95,25 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - color 0.3.3 — Apache-2.0 OR MIT
 - combine 4.6.9 — MIT
 - concurrent-queue 2.5.0 — Apache-2.0 OR MIT
+- const-oid 0.10.3 — Apache-2.0 OR MIT
+- cookie 0.18.2 — MIT OR Apache-2.0
+- cookie_store 0.22.1 — MIT OR Apache-2.0
 - core-foundation 0.9.4 — MIT OR Apache-2.0
 - core-foundation-sys 0.8.7 — MIT OR Apache-2.0
 - core-graphics 0.23.2 — MIT OR Apache-2.0
 - core-graphics-types 0.1.3 — MIT OR Apache-2.0
 - cpufeatures 0.2.17 — MIT OR Apache-2.0
+- cpufeatures 0.3.1 — MIT OR Apache-2.0
 - crc32fast 1.5.5 — MIT OR Apache-2.0
 - crossbeam-utils 0.8.23 — MIT OR Apache-2.0
 - crunchy 0.2.4 — MIT
 - crypto-common 0.1.7 — MIT OR Apache-2.0
+- crypto-common 0.2.2 — MIT OR Apache-2.0
 - cursor-icon 1.2.0 — MIT OR Apache-2.0 OR Zlib
+- data-encoding 2.11.1 — MIT
+- der-parser 10.0.0 — MIT OR Apache-2.0
+- deranged 0.5.9 — MIT OR Apache-2.0
+- digest 0.11.3 — MIT OR Apache-2.0
 - dirs 7.0.0 — MIT OR Apache-2.0
 - dirs-sys 0.5.0 — MIT OR Apache-2.0
 - dispatch 0.2.0 — MIT
@@ -131,6 +163,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - futures-util 0.3.34 — MIT OR Apache-2.0
 - generic-array 0.14.7 — MIT
 - gethostname 1.1.0 — Apache-2.0
+- getrandom 0.2.17 — MIT OR Apache-2.0
 - getrandom 0.3.4 — MIT OR Apache-2.0
 - getrandom 0.4.3 — MIT OR Apache-2.0
 - gl_generator 0.14.0 — Apache-2.0
@@ -148,6 +181,14 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - hashbrown 0.17.1 — MIT OR Apache-2.0
 - hermit-abi 0.5.3 — MIT OR Apache-2.0
 - hex 0.4.3 — MIT OR Apache-2.0
+- http 1.5.0 — MIT OR Apache-2.0
+- http-body 1.1.0 — MIT
+- http-body-util 0.1.5 — MIT
+- httparse 1.10.1 — MIT OR Apache-2.0
+- httpdate 1.0.3 — MIT OR Apache-2.0
+- hybrid-array 0.4.15 — MIT OR Apache-2.0
+- hyper 1.12.0 — MIT
+- hyper-util 0.1.21 — MIT
 - iana-time-zone 0.1.65 — MIT OR Apache-2.0
 - iana-time-zone-haiku 0.1.2 — MIT OR Apache-2.0
 - icu_collections 2.4.0 — Unicode-3.0
@@ -160,6 +201,8 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - idna 1.1.0 — MIT OR Apache-2.0
 - idna_adapter 1.2.2 — Apache-2.0 OR MIT
 - image 0.25.10 — MIT OR Apache-2.0
+- include_dir 0.7.4 — MIT
+- include_dir_macros 0.7.4 — MIT
 - indexmap 2.14.2 — Apache-2.0 OR MIT
 - inout 0.1.4 — MIT OR Apache-2.0
 - itertools 0.15.0 — MIT OR Apache-2.0
@@ -173,6 +216,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - js-sys 0.3.107 — MIT OR Apache-2.0
 - khronos_api 3.1.0 — Apache-2.0
 - kurbo 0.13.1 — Apache-2.0 OR MIT
+- lazy_static 1.5.1 — MIT OR Apache-2.0
 - libc 0.2.191 — MIT OR Apache-2.0
 - libloading 0.8.9 — ISC
 - libm 0.2.16 — MIT
@@ -184,11 +228,15 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - litrs 1.0.1 — MIT OR Apache-2.0
 - lock_api 0.4.14 — MIT OR Apache-2.0
 - log 0.4.35 — MIT OR Apache-2.0
+- matchit 0.8.4 — MIT AND BSD-3-Clause
 - memchr 2.8.3 — Unlicense OR MIT
 - memmap2 0.9.12 — MIT OR Apache-2.0
 - memoffset 0.9.1 — MIT
+- mime 0.3.18 — MIT OR Apache-2.0
+- minimal-lexical 0.2.1 — MIT/Apache-2.0
 - miniz_oxide 0.8.9 — MIT OR Zlib OR Apache-2.0
 - miniz_oxide 0.9.1 — MIT OR Zlib OR Apache-2.0
+- mio 1.2.5 — MIT
 - moxcms 0.8.1 — BSD-3-Clause OR Apache-2.0
 - naga 30.0.2 — MIT OR Apache-2.0
 - naga-types 30.0.2 — MIT OR Apache-2.0
@@ -196,9 +244,13 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - ndk-context 0.1.1 — MIT OR Apache-2.0
 - ndk-sys 0.6.0+11769913 — MIT OR Apache-2.0
 - nohash-hasher 0.2.0 — Apache-2.0 OR MIT
+- nom 7.1.3 — MIT
 - nom 8.0.0 — MIT
 - num_enum 0.7.6 — BSD-3-Clause OR MIT OR Apache-2.0
 - num_enum_derive 0.7.6 — BSD-3-Clause OR MIT OR Apache-2.0
+- num-bigint 0.4.8 — MIT OR Apache-2.0
+- num-conv 0.2.2 — MIT OR Apache-2.0
+- num-integer 0.1.47 — MIT OR Apache-2.0
 - num-traits 0.2.19 — MIT OR Apache-2.0
 - objc-sys 0.3.5 — MIT
 - objc2 0.5.3 — MIT
@@ -225,6 +277,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - objc2-uniform-type-identifiers 0.2.2 — MIT
 - objc2-uniform-type-identifiers 0.3.2 — Zlib OR Apache-2.0 OR MIT
 - objc2-user-notifications 0.2.2 — MIT
+- oid-registry 0.8.1 — MIT OR Apache-2.0
 - once_cell 1.21.4 — MIT OR Apache-2.0
 - option-ext 0.2.0 — MPL-2.0
 - orbclient 0.3.55 — MIT
@@ -253,6 +306,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - portable-atomic 1.15.0 — Apache-2.0 OR MIT
 - portable-atomic-util 0.2.8 — Apache-2.0 OR MIT
 - potential_utf 0.1.6 — Unicode-3.0
+- powerfmt 0.2.1 — MIT OR Apache-2.0
 - proc-macro-crate 3.5.0 — MIT OR Apache-2.0
 - proc-macro2 1.0.107 — MIT OR Apache-2.0
 - profiling 1.0.18 — MIT OR Apache-2.0
@@ -264,18 +318,25 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - r-efi 6.0.0 — MIT OR Apache-2.0 OR LGPL-2.1-or-later
 - raw-window-handle 0.6.2 — MIT OR Apache-2.0 OR Zlib
 - read-fonts 0.41.0 — MIT OR Apache-2.0
+- redb 5.0.0 — MIT OR Apache-2.0
 - redox_syscall 0.4.1 — MIT
 - redox_syscall 0.5.18 — MIT
 - redox_syscall 0.9.5 — MIT
 - redox_users 0.5.3 — MIT
 - renderdoc-sys 1.1.0 — MIT OR Apache-2.0
 - rfd 0.18.0 — MIT
+- ring 0.17.14 — Apache-2.0 AND ISC
 - rustc_version 0.4.1 — MIT OR Apache-2.0
 - rustc-hash 1.1.0 — Apache-2.0/MIT
 - rustc-hash 2.1.3 — Apache-2.0 OR MIT
+- rusticata-macros 4.1.0 — MIT/Apache-2.0
 - rustix 0.38.44 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 - rustix 1.1.6 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
+- rustls 0.23.46 — Apache-2.0 OR ISC OR MIT
+- rustls-pki-types 1.16.0 — MIT OR Apache-2.0
+- rustls-webpki 0.103.17 — ISC
 - rustversion 1.0.23 — MIT OR Apache-2.0
+- ryu 1.0.23 — Apache-2.0 OR BSL-1.0
 - same-file 1.0.6 — Unlicense/MIT
 - scoped-tls 1.0.1 — MIT/Apache-2.0
 - scopeguard 1.2.0 — MIT OR Apache-2.0
@@ -286,7 +347,11 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - serde_core 1.0.229 — MIT OR Apache-2.0
 - serde_derive 1.0.229 — MIT OR Apache-2.0
 - serde_json 1.0.154 — MIT OR Apache-2.0
+- serde_path_to_error 0.1.20 — MIT OR Apache-2.0
 - serde_repr 0.1.21 — MIT OR Apache-2.0
+- serde_spanned 1.1.3 — MIT OR Apache-2.0
+- serde_urlencoded 0.7.1 — MIT/Apache-2.0
+- sha2 0.11.1 — MIT OR Apache-2.0
 - shlex 2.0.1 — MIT OR Apache-2.0
 - signal-hook-registry 1.4.8 — MIT OR Apache-2.0
 - simd_cesu8 1.2.0 — Apache-2.0 OR MIT
@@ -301,10 +366,14 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - smithay-client-toolkit 0.20.0 — MIT
 - smithay-clipboard 0.7.3 — MIT
 - smol_str 0.2.2 — MIT OR Apache-2.0
+- socket2 0.6.5 — MIT OR Apache-2.0
 - stable_deref_trait 1.2.1 — MIT OR Apache-2.0
 - static_assertions 1.1.0 — MIT OR Apache-2.0
+- subtle 2.6.1 — BSD-3-Clause
 - syn 2.0.119 — MIT OR Apache-2.0
 - syn 3.0.10 — MIT OR Apache-2.0
+- sync_wrapper 1.0.2 — Apache-2.0
+- synstructure 0.13.2 — MIT
 - synstructure 0.14.0 — MIT
 - sys-locale 0.3.2 — MIT OR Apache-2.0
 - tempfile 3.27.0 — MIT OR Apache-2.0
@@ -313,11 +382,20 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - thiserror-impl 1.0.69 — MIT OR Apache-2.0
 - thiserror-impl 2.0.21 — MIT OR Apache-2.0
 - tiff 0.11.3 — MIT
+- time 0.3.55 — MIT OR Apache-2.0
+- time-core 0.1.9 — MIT OR Apache-2.0
+- time-macros 0.2.32 — MIT OR Apache-2.0
 - tinystr 0.8.5 — Unicode-3.0
 - tokio 1.54.1 — MIT
+- tokio-macros 2.7.2 — MIT
+- toml 1.2.1+spec-1.1.0 — MIT OR Apache-2.0
 - toml_datetime 1.1.3+spec-1.1.0 — MIT OR Apache-2.0
 - toml_edit 0.25.19+spec-1.1.0 — MIT OR Apache-2.0
 - toml_parser 1.1.5+spec-1.1.0 — MIT OR Apache-2.0
+- toml_writer 1.2.0+spec-1.1.0 — MIT OR Apache-2.0
+- tower 0.5.3 — MIT
+- tower-layer 0.3.3 — MIT
+- tower-service 0.3.3 — MIT
 - tracing 0.1.44 — MIT
 - tracing-attributes 0.1.31 — MIT
 - tracing-core 0.1.36 — MIT
@@ -330,14 +408,19 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - unicode-properties 0.1.5 — (MIT OR Apache-2.0) AND Unicode-3.0
 - unicode-segmentation 1.13.3 — MIT OR Apache-2.0
 - unicode-width 0.2.3 — MIT OR Apache-2.0
+- untrusted 0.9.0 — ISC
+- ureq 3.5.2 — MIT OR Apache-2.0
+- ureq-proto 0.7.1 — MIT OR Apache-2.0
 - url 2.5.8 — MIT OR Apache-2.0
 - utf_types 1.0.0 — Apache-2.0 OR MIT
 - utf8_iter 1.1.0 — Apache-2.0 OR MIT
+- utf8-zero 0.8.1 — MIT OR Apache-2.0
 - uuid 1.29.2 — Apache-2.0 OR MIT
 - vello_common 0.2.0 — Apache-2.0 OR MIT
 - vello_cpu 0.2.0 — Apache-2.0 OR MIT
 - version_check 0.9.5 — MIT/Apache-2.0
 - walkdir 2.5.0 — Unlicense/MIT
+- wasi 0.11.1+wasi-snapshot-preview1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 - wasip2 1.0.4+wasi-0.2.12 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 - wasm-bindgen 0.2.130 — MIT OR Apache-2.0
 - wasm-bindgen-futures 0.4.80 — MIT OR Apache-2.0
@@ -358,6 +441,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - web-sys 0.3.107 — MIT OR Apache-2.0
 - web-time 1.1.0 — MIT OR Apache-2.0
 - webbrowser 1.2.7 — MIT OR Apache-2.0
+- webpki-roots 1.0.12 — CDLA-Permissive-2.0
 - weezl 0.1.12 — MIT OR Apache-2.0
 - wgpu 30.0.2 — MIT OR Apache-2.0
 - wgpu-core 30.0.2 — MIT OR Apache-2.0
@@ -397,6 +481,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - x11-dl 2.21.0 — MIT
 - x11rb 0.13.2 — MIT OR Apache-2.0
 - x11rb-protocol 0.13.2 — MIT OR Apache-2.0
+- x509-parser 0.18.1 — MIT OR Apache-2.0
 - xcursor 0.3.11 — MIT
 - xkbcommon-dl 0.4.2 — MIT
 - xkeysym 0.2.1 — MIT OR Apache-2.0 OR Zlib
@@ -414,6 +499,7 @@ ShelterSave-Studio uses these components. Each keeps its own license.
 - zerocopy-derive 0.8.63 — BSD-2-Clause OR Apache-2.0 OR MIT
 - zerofrom 0.1.8 — Unicode-3.0
 - zerofrom-derive 0.1.8 — Unicode-3.0
+- zeroize 1.9.2 — Apache-2.0 OR MIT
 - zerotrie 0.2.5 — Unicode-3.0
 - zerovec 0.11.9 — Unicode-3.0
 - zerovec-derive 0.11.7 — Unicode-3.0

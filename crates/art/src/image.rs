@@ -87,13 +87,15 @@ pub fn texture(name: &str, raw: Vec<u8>) -> Option<Image> {
         "RGBA32" => raw,
         "ARGB32" => {
             let mut v = raw;
-            for p in v.chunks_exact_mut(4) {
+            for p in v.as_chunks_mut::<4>().0 {
                 p.rotate_left(1);
             }
             v
         }
         "RGB24" => raw
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         "DXT1" => decode_bc(&raw, w, h, false)?,

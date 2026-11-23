@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ShelterSave-Studio
+GenericName=Fallout Shelter save editor
+GenericName[ru]=Редактор сохранений Fallout Shelter
+Comment=Edit Fallout Shelter save files
+Comment[ru]=Правка файлов сохранений Fallout Shelter
+Exec=shelter-save-studio %f
+Icon=shelter-save-studio
+Terminal=false
+Categories=Utility;
+StartupWMClass=shelter-save-studio

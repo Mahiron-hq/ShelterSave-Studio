@@ -1041,38 +1041,4 @@ fn value_row(app: &mut App, ui: &mut egui::Ui, p: &[Seg], key: &str, child: &Val
     }
 }
 
-/// Minimal Markdown for the bundled documents: headings, lists, bold.
-pub fn markdown(ui: &mut egui::Ui, text: &str) {
-    let c = style::colors(ui.ctx());
-    let mut para = String::new();
-    let flush = |ui: &mut egui::Ui, para: &mut String| {
-        if !para.trim().is_empty() {
-            ui.label(para.trim().replace("**", ""));
-            ui.add_space(4.0);
-        }
-        para.clear();
-    };
-    for line in text.lines() {
-        let l = line.trim_end();
-        if let Some(h) = l.strip_prefix("# ") {
-            flush(ui, &mut para);
-            ui.label(RichText::new(h).font(style::bold(18.0)));
-        } else if let Some(h) = l.strip_prefix("## ") {
-            flush(ui, &mut para);
-            ui.add_space(4.0);
-            ui.label(RichText::new(h).font(style::bold(15.0)));
-        } else if let Some(item) = l.strip_prefix("- ") {
-            flush(ui, &mut para);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("•").color(c.accent));
-                ui.label(item.replace("**", ""));
-            });
-        } else if l.is_empty() {
-            flush(ui, &mut para);
-        } else {
-            para.push_str(l);
-            para.push(' ');
-        }
-    }
-    flush(ui, &mut para);
-}
+pub use crate::style::markdown;

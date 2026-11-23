@@ -11,11 +11,17 @@ const lines = ["# Third-party components", "", "ShelterSave-Studio uses these co
   "- Inter 4.1 — SIL Open Font License 1.1 — https://rsms.me/inter/",
   "- JetBrains Mono 2.304 — SIL Open Font License 1.1 — https://www.jetbrains.com/lp/mono/",
   "- Lucide icons 0.468.0 — ISC License — https://lucide.dev", ""];
-const web = "web/client/package.json";
+const web = "web/package.json";
 if (existsSync(web)) {
-  const lock = JSON.parse(readFileSync("web/client/package-lock.json", "utf8"));
-  lines.push("## Web client (JavaScript)", "");
-  const names = Object.keys(JSON.parse(readFileSync(web, "utf8")).dependencies || {}).sort();
+  const lock = JSON.parse(readFileSync("web/package-lock.json", "utf8"));
+  const shipped = ["@ui-sdk/core", "@ui-sdk/svelte", "svelte"];
+  lines.push("## Website (JavaScript)", "", "Included in the website:", "");
+  for (const n of shipped) {
+    const p = lock.packages["node_modules/" + n] || {};
+    lines.push(`- ${n} ${p.version || ""} — ${p.license || "see package"}`);
+  }
+  lines.push("", "Used only to build and check it:", "");
+  const names = Object.keys(JSON.parse(readFileSync(web, "utf8")).devDependencies || {}).filter(n => !shipped.includes(n) && n !== "lucide-static").sort();
   for (const n of names) {
     const p = lock.packages["node_modules/" + n] || {};
     lines.push(`- ${n} ${p.version || ""} — ${p.license || "see package"}`);

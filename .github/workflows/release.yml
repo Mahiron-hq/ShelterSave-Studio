@@ -1,0 +1,162 @@
+name: Release build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VERSION: "1.0.0"
+  APP: ShelterSave-Studio
+
+jobs:
+  web:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: wasm tools
+        run: |
+          cargo install --locked wasm-bindgen-cli --version 0.2.130
+          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz | tar xz -C "$RUNNER_TEMP"
+          echo "WASM_OPT=$RUNNER_TEMP/binaryen-version_133/bin/wasm-opt" >> "$GITHUB_ENV"
+      - working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked -p shelter-save-studio
+      - name: Installer
+        shell: pwsh
+        run: |
+          $env:SHELTER_PAYLOAD = (Resolve-Path target/release/shelter-save-studio.exe).Path
+          cargo build --release --locked -p shelter-save-studio-setup
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item target/release/shelter-save-studio.exe "out/$env:APP-$env:VERSION-windows-x64-portable.exe"
+          Copy-Item target/release/shelter-save-studio-setup.exe "out/$env:APP-$env:VERSION-windows-x64-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxcb1-dev
+      - run: cargo build --release --locked -p shelter-save-studio
+      - run: cargo install --locked cargo-deb cargo-generate-rpm
+      - name: deb and rpm
+        run: |
+          mkdir -p out
+          cargo deb -p shelter-save-studio --no-build -o "out/$APP-$VERSION-linux-x64.deb"
+          cargo generate-rpm -p apps/desktop -o "out/$APP-$VERSION-linux-x64.rpm"
+      - name: AppImage
+        run: |
+          D=AppDir
+          mkdir -p $D/usr/bin $D/usr/share/applications $D/usr/share/icons/hicolor/256x256/apps
+          cp target/release/shelter-save-studio $D/usr/bin/
+          cp packaging/linux/shelter-save-studio.desktop $D/
+          cp packaging/linux/shelter-save-studio.desktop $D/usr/share/applications/
+          cp assets/app-icon.png $D/shelter-save-studio.png
+          cp assets/app-icon.png $D/usr/share/icons/hicolor/256x256/apps/shelter-save-studio.png
+          ln -s usr/bin/shelter-save-studio $D/AppRun
+          curl -sSfL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run $D "out/$APP-$VERSION-linux-x64.AppImage"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: out/*
+
+  macos:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+          - target: x86_64-apple-darwin
+            arch: x64
+    runs-on: macos-14
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked -p shelter-save-studio --target ${{ matrix.target }}
+      - name: App bundle, zip and dmg
+        run: |
+          B="$APP.app"
+          mkdir -p "$B/Contents/MacOS" "$B/Contents/Resources" out dmg
+          cp target/${{ matrix.target }}/release/shelter-save-studio "$B/Contents/MacOS/"
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$B/Contents/Info.plist"
+          cp assets/app-icon.icns "$B/Contents/Resources/"
+          codesign --force --deep -s - "$B"
+          ditto -c -k --keepParent "$B" "out/$APP-$VERSION-macos-${{ matrix.arch }}.zip"
+          cp -R "$B" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "$APP" -srcfolder dmg -ov -format UDZO "out/$APP-$VERSION-macos-${{ matrix.arch }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: out/*
+
+  server:
+    needs: web
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - run: cargo build --release --locked -p shelter-site
+      - name: Package
+        run: |
+          N="$APP-$VERSION-server-linux-x64"
+          mkdir -p "$N" out
+          cp target/release/shelter-site "$N/shelter-site"
+          cp deploy/config.example.toml deploy/shelter-site.service deploy/shelter-watch.service deploy/nginx.conf deploy/INSTALL.ru.md deploy/INSTALL.en.md LICENSE "$N/"
+          tar czf "out/$N.tar.gz" "$N"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: out/*
+
+  checksums:
+    needs: [windows, linux, macos, server]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: "{windows,linux,macos-*,server}"
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/*

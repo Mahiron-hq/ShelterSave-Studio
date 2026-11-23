@@ -7,13 +7,15 @@
 - Сервер с Debian и доступом root.
 - Поддомен, направленный на сервер, например `shelter.mahiron.online`.
 - nginx и сертификат TLS, например от Let's Encrypt через `certbot`.
-- Файл `shelter-site-1.0.0-linux-x64` из [выпуска на GitHub](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest). Сверьте его контрольную сумму SHA-256 со страницы выпуска: `sha256sum shelter-site-1.0.0-linux-x64`.
+- Архив `ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz` из [выпуска на GitHub](https://github.com/Mahiron-hq/ShelterSave-Studio/releases/latest). Сверьте его контрольную сумму SHA-256 с файлом `SHA256SUMS.txt` выпуска: `sha256sum ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz`. В архиве программа, этот файл и образцы настроек.
 
 ## 2. Пользователь и файлы
 
 ```
+tar xzf ShelterSave-Studio-1.0.0-server-linux-x64.tar.gz
+cd ShelterSave-Studio-1.0.0-server-linux-x64
 sudo useradd --system --home /var/lib/shelter-site --shell /usr/sbin/nologin shelter-site
-sudo install -m 755 shelter-site-1.0.0-linux-x64 /usr/local/bin/shelter-site
+sudo install -m 755 shelter-site /usr/local/bin/shelter-site
 sudo install -d -m 750 -o root -g shelter-site /etc/shelter-site
 sudo install -m 640 -o root -g shelter-site config.example.toml /etc/shelter-site/config.toml
 ```
@@ -76,9 +78,9 @@ sudo -u shelter-site shelter-site stats --config /etc/shelter-site/config.toml -
 
 ## 7. Обновление
 
-1. Скачайте новую сборку и сверьте её SHA-256.
+1. Скачайте новый архив, сверьте его SHA-256 и распакуйте.
 2. Сохраните текущую: `sudo cp /usr/local/bin/shelter-site /usr/local/bin/shelter-site.prev`.
-3. Установите новую: `sudo install -m 755 shelter-site-<версия>-linux-x64 /usr/local/bin/shelter-site`.
+3. Установите новую из папки архива: `sudo install -m 755 shelter-site /usr/local/bin/shelter-site`.
 4. Перезапустите: `sudo systemctl restart shelter-site shelter-watch`.
 
 ## 8. Откат

@@ -227,13 +227,15 @@ impl Mesh {
             ) as usize);
         }
         let ids: Vec<usize> = idx
-            .chunks_exact(2)
-            .map(|c| usize::from(u16::from_le_bytes([c[0], c[1]])))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| usize::from(u16::from_le_bytes(*c)))
             .collect();
         if ids.iter().any(|i| *i >= n) {
             return None;
         }
-        let tris = ids.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect();
+        let tris = ids.as_chunks::<3>().0.to_vec();
         Some(Mesh {
             pos,
             uv,
