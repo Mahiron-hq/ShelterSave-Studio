@@ -473,6 +473,14 @@ table.grid th {
   border-color: var(--accent);
   color: var(--on-accent);
 }
+[data-slot="checkbox-indicator"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 0;
+}
 
 [data-slot="slider"] {
   display: inline-flex;
@@ -570,8 +578,16 @@ input:focus,
 textarea:focus {
   border-color: var(--accent);
 }
-[data-slot="checkbox"]:hover {
+[data-slot="checkbox"]:hover:not(:disabled) {
+  background: var(--surface);
   border-color: var(--text);
+}
+[data-slot="checkbox"][data-checked]:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+[data-slot="checkbox"]:active:not(:disabled) {
+  transform: none;
 }
 [data-slot="checkbox"] .icon,
 [data-slot="checkbox-indicator"] {

@@ -44,9 +44,12 @@
     const s = q.trim().toLowerCase()
     const set = new Set(done)
     return ids
-      .map((id) => ({ id, name: core().questLine(id), done: set.has(id) }))
+      .map((id) => {
+        const [name, diff = ""] = core().questLine(id).split("  ·  ")
+        return { id, name, diff, done: set.has(id) }
+      })
       .filter((x) => (filter === "done" ? x.done : filter === "todo" ? !x.done : true))
-      .filter((x) => !s || x.name.toLowerCase().includes(s) || x.id.toLowerCase().includes(s))
+      .filter((x) => !s || `${x.name} ${x.diff}`.toLowerCase().includes(s) || x.id.toLowerCase().includes(s))
   })
 
   const at = (p: string[]): Path => p
@@ -126,6 +129,7 @@
       {#each questRows as x (x.id)}
         <li title={app.expert ? x.id : app.t("o.questToggleHelp")}>
           <Check checked={x.done} label={x.name} onchange={(v) => app.act({ action: "markQuest", id: x.id, done: v })} />
+          <span class="muted diff">{x.diff}</span>
         </li>
       {/each}
     </ul>
@@ -135,26 +139,30 @@
 <section class="panel">
   <h3>{app.t("o.questMemory")}</h3>
   <p class="muted">{app.t("o.questMemoryHelp")}</p>
-  {#each consts().questMemory as [key, path] (key)}
-    {@const list = arr(r, path)}
-    {#if list.length}
-      <div class="row-wrap mem">
-        <strong>{app.t(`o.qm.${key}`)}</strong>
-        <button type="button" class="small" onclick={() => app.act({ action: "forgetQuest", list: key, quest: "" })}>{app.t("o.qmClear")}</button>
-      </div>
-      {#each list as e, i (i)}
-        {#if typeof e?.questName === "string"}
-          <p class="row-wrap">
-            <button type="button" class="icon ghost" aria-label="{app.t('o.qmForget')}: {core().questLine(e.questName)}" title={app.t("o.qmForget")} onclick={() => app.act({ action: "forgetQuest", list: key, quest: e.questName })}>
-              <Icon name="x" />
-            </button>
-            {core().questLine(e.questName)}
-            {#if e.startDate}<span class="muted small">{core().gameDate(e.startDate)}</span>{/if}
-          </p>
-        {/if}
-      {/each}
-    {/if}
-  {/each}
+  <div class="memgrid">
+    {#each consts().questMemory as [key, path] (key)}
+      {@const list = arr(r, path)}
+      {#if list.length}
+        <div class="row-wrap mem">
+          <strong>{app.t(`o.qm.${key}`)}</strong>
+          <button type="button" class="small" onclick={() => app.act({ action: "forgetQuest", list: key, quest: "" })}>{app.t("o.qmClear")}</button>
+        </div>
+        {#each list as e, i (i)}
+          {#if typeof e?.questName === "string"}
+            {@const [qn, qd = ""] = core().questLine(e.questName).split("  ·  ")}
+            <p class="memrow">
+              <button type="button" class="icon ghost" aria-label="{app.t('o.qmForget')}: {qn}" title={app.t("o.qmForget")} onclick={() => app.act({ action: "forgetQuest", list: key, quest: e.questName })}>
+                <Icon name="x" />
+              </button>
+              <span>{qn}</span>
+              <span>{qd}</span>
+              <span class="muted diff">{e.startDate ? core().gameDate(e.startDate) : ""}</span>
+            </p>
+          {/if}
+        {/each}
+      {/if}
+    {/each}
+  </div>
   {#if arr(r, ["completedQuestDataManager", "foundClues"]).length}
     <p><span class="muted">{app.t("o.questClues")}</span> {arr(r, ["completedQuestDataManager", "foundClues"]).filter((x) => typeof x === "string").join(", ")}</p>
   {/if}
@@ -206,11 +214,44 @@
     max-height: 420px;
     overflow: auto;
   }
+  .list {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) 1fr;
+    column-gap: var(--s-lg);
+    align-content: start;
+  }
   .list li {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
     padding: 2px 0;
+  }
+  .diff {
+    font-size: 12px;
   }
   .mem {
     margin-top: var(--s-sm);
+    grid-column: 1 / -1;
+  }
+  .memgrid {
+    display: grid;
+    grid-template-columns: auto minmax(0, max-content) max-content 1fr;
+    column-gap: var(--s-md);
+  }
+  .memrow {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    margin: 0;
+  }
+  @media (max-width: 640px) {
+    .memrow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+    }
   }
   .small {
     min-height: 26px;

@@ -1763,45 +1763,71 @@ fn delete_dweller(b: &mut Builder<'_>, id: i64) -> R<bool> {
         return Ok(false);
     };
     let snapshot = b.root().clone();
-    for (i, r) in arr(&snapshot, &ROOMS).iter().enumerate() {
-        remove_number(b, pi(&ROOMS, i, &["dwellers"]), id)?;
-        remove_number(
-            b,
-            pi(&ROOMS, i, &["dwellerWithPendingCompleteTraining"]),
-            id,
-        )?;
-        remove_number(b, pi(&ROOMS, i, &["deadDwellers"]), id)?;
-        for (j, s) in r
-            .get("slots")
-            .and_then(Value::as_array)
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .enumerate()
-        {
-            if int(s, &["dwellerID"]) == Some(id) {
-                let mut path = pi(&ROOMS, i, &["slots"]);
-                path.push(Seg::Index(j));
-                path.push(Seg::Key("dwellerID".into()));
-                b.set(path, Value::int(-1))?;
+    // Like Dweller.Evict: worn items go back to storage unless the dweller is away with a team.
+    let on_quest = arr(
+        &snapshot,
+        &["questDataManager", "questTeam", "DwellersDictionary"],
+    )
+    .iter()
+    .any(|v| v.as_i64() == Some(id));
+    if team_of(&snapshot, id).is_none() && !on_quest && b.get(&p(&ITEMS)).is_some() {
+        let d = &arr(&snapshot, &DWELLERS)[idx];
+        for key in ["equipedOutfit", "equipedWeapon", "equippedPet"] {
+            let Some(item) = d.get(key) else { continue };
+            let item_id = text(item, &["id"]).unwrap_or_default();
+            let keep = match key {
+                "equipedOutfit" => {
+                    item_id != "jumpsuit"
+                        && catalog().outfit(&item_id).is_none_or(|o| o.category != 1)
+                }
+                "equipedWeapon" => item_id != "Fist",
+                _ => !item_id.is_empty(),
+            };
+            if keep {
+                b.push(p(&ITEMS), item.clone())?;
             }
         }
-        for list in ["partners", "children"] {
-            let lp = pi(&ROOMS, i, &[list]);
-            loop {
-                let pos = b.get(&lp).and_then(Value::as_array).and_then(|a| {
-                    a.iter().position(|e| {
-                        ["m", "f", "fatherId", "dwellerId", "id"]
-                            .iter()
-                            .any(|k| int(e, &[k]) == Some(id))
-                    })
-                });
-                match pos {
-                    Some(k) => {
-                        b.remove(lp.clone(), k)?;
-                    }
-                    None => break,
+    }
+    drop_from_rooms(b, id, None)?;
+    for i in 0..arr(b.root(), &ROOMS).len() {
+        let lp = pi(&ROOMS, i, &["partners"]);
+        // A pregnancy outlives the father (DwellerPartnership.OnDwellerRemoved); without the mother it ends.
+        while let Some(k) = b.get(&lp).and_then(Value::as_array).and_then(|a| {
+            a.iter().position(|e| {
+                text(e, &["s"]).as_deref() == Some("RaisingBaby") && int(e, &["f"]) == Some(id)
+            })
+        }) {
+            let task = b
+                .get(&lp)
+                .and_then(|a| a.at(&[Seg::Index(k)]))
+                .and_then(|e| int(e, &["t"]));
+            b.remove(lp.clone(), k)?;
+            remove_tasks(b, &task.into_iter().filter(|t| *t >= 0).collect::<Vec<_>>())?;
+        }
+        let n = b.get(&lp).and_then(Value::as_array).map_or(0, Vec::len);
+        for k in 0..n {
+            for key in ["m", "fatherId"] {
+                let path = pi(&ROOMS, i, &["partners"])
+                    .into_iter()
+                    .chain([Seg::Index(k), Seg::Key(key.into())])
+                    .collect::<Vec<_>>();
+                if b.get(&path).and_then(Value::as_i64) == Some(id) {
+                    b.set(path, Value::int(-1))?;
                 }
             }
+        }
+        let cp = pi(&ROOMS, i, &["children"]);
+        while let Some(k) = b
+            .get(&cp)
+            .and_then(Value::as_array)
+            .and_then(|a| a.iter().position(|e| int(e, &["dwellerID"]) == Some(id)))
+        {
+            let task = b
+                .get(&cp)
+                .and_then(|a| a.at(&[Seg::Index(k)]))
+                .and_then(|e| int(e, &["taskID"]));
+            b.remove(cp.clone(), k)?;
+            remove_tasks(b, &task.into_iter().filter(|t| *t >= 0).collect::<Vec<_>>())?;
         }
     }
     for (i, d) in arr(&snapshot, &DWELLERS).iter().enumerate() {
@@ -1809,6 +1835,14 @@ fn delete_dweller(b: &mut Builder<'_>, id: i64) -> R<bool> {
             if int(d, &["relations", key]) == Some(id) {
                 b.set(pi(&DWELLERS, i, &["relations", key]), Value::int(-1))?;
             }
+        }
+        let rl = pi(&DWELLERS, i, &["relations", "relations"]);
+        while let Some(k) = b
+            .get(&rl)
+            .and_then(Value::as_array)
+            .and_then(|a| a.iter().position(|e| int(e, &["dweller"]) == Some(id)))
+        {
+            b.remove(rl.clone(), k)?;
         }
     }
     let mut ai = 0;
@@ -1825,6 +1859,14 @@ fn delete_dweller(b: &mut Builder<'_>, id: i64) -> R<bool> {
     }
     let team = p(&["questDataManager", "questTeam"]);
     remove_number(b, join(&team, &["DwellersDictionary"]), id)?;
+    let away = p(&["questDwellers", "dwellers"]);
+    while let Some(k) = b
+        .get(&away)
+        .and_then(Value::as_array)
+        .and_then(|a| a.iter().position(|e| int(e, &["serializeId"]) == Some(id)))
+    {
+        b.remove(away.clone(), k)?;
+    }
     let eq = join(&team, &["InitialEquipment"]);
     while let Some(k) = b
         .get(&eq)
@@ -1918,6 +1960,17 @@ fn assign_room(b: &mut Builder<'_>, mode: Mode, ids: &[i64], room: i64) -> R<usi
     } else {
         Some(room_index(b.root(), room).ok_or(RuleError::NotFound)?)
     };
+    if mode == Mode::Normal && target.is_some() {
+        let quest = arr(
+            b.root(),
+            &["questDataManager", "questTeam", "DwellersDictionary"],
+        );
+        if ids.iter().any(|id| {
+            team_of(b.root(), *id).is_some() || quest.iter().any(|v| v.as_i64() == Some(*id))
+        }) {
+            return Err(RuleError::DwellerAway.into());
+        }
+    }
     if let (Some(t), Mode::Normal) = (target, mode) {
         let r = &arr(b.root(), &ROOMS)[t];
         let current: HashSet<i64> = r
@@ -1951,10 +2004,11 @@ fn assign_room(b: &mut Builder<'_>, mode: Mode, ids: &[i64], room: i64) -> R<usi
                 b.push(list, Value::int(*id))?;
             }
             b.set(join(&base, &["savedRoom"]), Value::int(room))?;
-            b.set(join(&base, &["assigned"]), Value::Bool(true))?;
         } else {
             b.set(join(&base, &["savedRoom"]), Value::int(-1))?;
-            b.set(join(&base, &["assigned"]), Value::Bool(false))?;
+        }
+        if b.get(&join(&base, &["assigned"])).is_some() {
+            b.set(join(&base, &["assigned"]), Value::Bool(target.is_some()))?;
         }
         n += 1;
     }
@@ -2319,6 +2373,33 @@ fn unassign(b: &mut Builder<'_>, id: i64) -> R<()> {
     Ok(())
 }
 
+/// Like LivingQuartersRoom.OnRemoveDweller: a couple that has no baby yet breaks up
+/// when one of them leaves the room; their task goes and both lose their partner.
+fn end_partnerships(b: &mut Builder<'_>, room: usize, id: i64) -> R<()> {
+    let lp = pi(&ROOMS, room, &["partners"]);
+    while let Some((k, e)) = b.get(&lp).and_then(Value::as_array).and_then(|a| {
+        a.iter().enumerate().find_map(|(k, e)| {
+            let s = text(e, &["s"]).unwrap_or_default();
+            let ours = int(e, &["m"]) == Some(id) || int(e, &["f"]) == Some(id);
+            (ours && s != "RaisingBaby" && s != "Ended").then(|| (k, e.clone()))
+        })
+    }) {
+        b.remove(lp.clone(), k)?;
+        if let Some(t) = int(&e, &["t"]).filter(|t| *t >= 0) {
+            remove_tasks(b, &[t])?;
+        }
+        for who in [int(&e, &["m"]), int(&e, &["f"])].into_iter().flatten() {
+            let Ok(base) = dweller_path(b.root(), who) else {
+                continue;
+            };
+            if b.get(&join(&base, &["relations", "partner"])).is_some() {
+                b.set(join(&base, &["relations", "partner"]), Value::int(-1))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Removes a dweller from room lists and training slots, except in room `keep`.
 fn drop_from_rooms(b: &mut Builder<'_>, id: i64, keep: Option<usize>) -> R<()> {
     let n = arr(b.root(), &ROOMS).len();
@@ -2333,6 +2414,7 @@ fn drop_from_rooms(b: &mut Builder<'_>, id: i64, keep: Option<usize>) -> R<()> {
             pi(&ROOMS, i, &["dwellerWithPendingCompleteTraining"]),
             id,
         )?;
+        end_partnerships(b, i, id)?;
         let slots = pi(&ROOMS, i, &["slots"]);
         while let Some(j) = b.get(&slots).and_then(Value::as_array).and_then(|a| {
             a.iter()
@@ -4073,6 +4155,146 @@ mod tests {
             .unwrap();
         }
         root
+    }
+
+    fn family() -> Value {
+        json::parse(
+            r#"{"taskMgr":{"id":9,"tasks":[{"id":5},{"id":6},{"id":7}],"pausedTasks":[]},
+            "dwellers":{"dwellers":[
+              {"serializeId":1,"gender":2,"relations":{"relations":[{"dweller":2,"value":3}],"partner":2,"lastPartner":-1},"savedRoom":10,
+               "equipedOutfit":{"id":"MetalArmor_Sturdy","type":"Outfit","hasBeenAssigned":false,"hasRandonWeaponBeenAssigned":false},
+               "equipedWeapon":{"id":"Fist","type":"Weapon","hasBeenAssigned":false,"hasRandonWeaponBeenAssigned":false},
+               "equippedPet":{"id":"abyssinian_r","type":"Pet","hasBeenAssigned":false,"hasRandonWeaponBeenAssigned":false,"extraData":{"uniqueName":"C","bonus":"Resistance","bonusValue":40}}},
+              {"serializeId":2,"gender":1,"pregnant":true,"relations":{"relations":[{"dweller":1,"value":3}],"partner":1,"lastPartner":1},"savedRoom":10},
+              {"serializeId":3,"gender":2,"relations":{"relations":[],"partner":4,"lastPartner":-1},"savedRoom":10},
+              {"serializeId":4,"gender":1,"relations":{"relations":[],"partner":3,"lastPartner":-1},"savedRoom":10},
+              {"serializeId":5,"gender":1,"relations":{"relations":[],"partner":-1,"lastPartner":-1},"savedRoom":10},
+              {"serializeId":6,"gender":2,"relations":{"relations":[],"partner":-1,"lastPartner":-1},"savedRoom":-1}],
+             "actors":[{"serializeId":20,"characterType":3,"FollowedID":1}],"id":7,"mrhId":21},
+            "vault":{"rooms":[
+              {"type":"LivingQuarters","class":"Production","mergeLevel":3,"row":1,"col":0,"level":1,"deserializeID":10,"dwellers":[1,2,3,4,5],
+               "partners":[{"m":1,"f":2,"s":"RaisingBaby","fatherId":1,"t":5},{"m":3,"f":4,"s":"MakingBaby","fatherId":3,"t":6}],
+               "children":[{"taskID":7,"dwellerID":5,"notificationID":-1}]},
+              {"type":"Gym","class":"Training","mergeLevel":1,"row":2,"col":0,"level":1,"deserializeID":11,"dwellers":[]}],
+             "inventory":{"items":[]},"wasteland":{"teams":[{"dwellers":[6]}]}},
+            "happinessManager":{"rooms":[],"dwellers":[]}}"#,
+        )
+        .unwrap()
+    }
+
+    fn act(root: &mut Value, mode: Mode, a: Action) -> Result<Transaction, ActionError> {
+        let orig = root.clone();
+        let ctx = Ctx {
+            mode,
+            original: &orig,
+        };
+        run(root, &ctx, &a)
+    }
+
+    #[test]
+    fn delete_father_keeps_pregnancy_and_returns_items() {
+        let mut root = family();
+        act(
+            &mut root,
+            Mode::Normal,
+            Action::DeleteDwellers { ids: vec![1] },
+        )
+        .unwrap();
+        let room = &arr(&root, &ROOMS)[0];
+        let baby = &arr(room, &["partners"])[0];
+        assert_eq!(text(baby, &["s"]).as_deref(), Some("RaisingBaby"));
+        assert_eq!(int(baby, &["m"]), Some(-1));
+        assert_eq!(int(baby, &["fatherId"]), Some(-1));
+        let items: Vec<String> = arr(&root, &ITEMS)
+            .iter()
+            .filter_map(|i| text(i, &["id"]))
+            .collect();
+        assert_eq!(items, ["MetalArmor_Sturdy", "abyssinian_r"]);
+        assert!(arr(&root, &ACTORS).is_empty());
+        let mother = &arr(&root, &DWELLERS)[0];
+        assert_eq!(int(mother, &["relations", "partner"]), Some(-1));
+        assert!(arr(mother, &["relations", "relations"]).is_empty());
+    }
+
+    #[test]
+    fn delete_mother_and_child_drop_their_tasks() {
+        let mut root = family();
+        act(
+            &mut root,
+            Mode::Normal,
+            Action::DeleteDwellers { ids: vec![2, 5] },
+        )
+        .unwrap();
+        let room = &arr(&root, &ROOMS)[0];
+        assert_eq!(arr(room, &["partners"]).len(), 1);
+        assert!(arr(room, &["children"]).is_empty());
+        let tasks: Vec<i64> = arr(&root, &["taskMgr", "tasks"])
+            .iter()
+            .filter_map(|t| int(t, &["id"]))
+            .collect();
+        assert_eq!(tasks, [6]);
+    }
+
+    #[test]
+    fn moving_out_breaks_a_couple_without_baby() {
+        let mut root = family();
+        act(
+            &mut root,
+            Mode::Normal,
+            Action::AssignRoom {
+                ids: vec![3],
+                room: 11,
+            },
+        )
+        .unwrap();
+        let room = &arr(&root, &ROOMS)[0];
+        let left: Vec<Option<String>> = arr(room, &["partners"])
+            .iter()
+            .map(|e| text(e, &["s"]))
+            .collect();
+        assert_eq!(left, [Some("RaisingBaby".to_string())]);
+        assert!(!ints(room, "dwellers").contains(&3));
+        assert_eq!(
+            int(&arr(&root, &DWELLERS)[3], &["relations", "partner"]),
+            Some(-1)
+        );
+        let tasks: Vec<i64> = arr(&root, &["taskMgr", "tasks"])
+            .iter()
+            .filter_map(|t| int(t, &["id"]))
+            .collect();
+        assert_eq!(tasks, [5, 7]);
+        // The mother moving away keeps the pregnancy.
+        act(
+            &mut root,
+            Mode::Normal,
+            Action::AssignRoom {
+                ids: vec![2],
+                room: 11,
+            },
+        )
+        .unwrap();
+        assert_eq!(arr(&arr(&root, &ROOMS)[0], &["partners"]).len(), 1);
+        let err = act(
+            &mut root,
+            Mode::Normal,
+            Action::AssignRoom {
+                ids: vec![6],
+                room: 11,
+            },
+        );
+        assert!(matches!(
+            err,
+            Err(ActionError::Rule(RuleError::DwellerAway))
+        ));
+        assert!(act(
+            &mut root,
+            Mode::Expert,
+            Action::AssignRoom {
+                ids: vec![6],
+                room: 11
+            }
+        )
+        .is_ok());
     }
 
     #[test]

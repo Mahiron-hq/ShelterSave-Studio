@@ -1090,3 +1090,36 @@ pub fn cell<R>(
     })
     .inner
 }
+
+/// Row without a file path: same label column and padding as `row`.
+pub fn plain_row(ui: &mut egui::Ui, label: &str, help: &str, body: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if ui.available_width() < 460.0 {
+                hint_label(ui, label, help);
+                ui.add_space(2.0);
+                ui.horizontal_wrapped(body);
+                return;
+            }
+            ui.horizontal_top(|ui| {
+                let label_w = LABEL_COL.min(ui.available_width() * 0.4);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(label_w, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.set_width(label_w);
+                        let text_h = ui
+                            .painter()
+                            .layout_no_wrap("Ag".into(), style::bold(14.0), egui::Color32::WHITE)
+                            .size()
+                            .y;
+                        ui.add_space(((ui.spacing().interact_size.y - text_h) / 2.0).max(0.0));
+                        hint_label(ui, label, help);
+                    },
+                );
+                ui.horizontal_wrapped(body);
+            });
+        });
+}

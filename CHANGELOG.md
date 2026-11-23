@@ -21,6 +21,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [Sem
 - У каждого раздела сайта свой адрес, например /ru/vault/rooms.
 - Справка внутри ПК-версии; на схеме убежища комнату можно двигать с клавиатуры (Alt и стрелки).
 - Ежедневный отчёт убежища: оценка недели пересчитывается вместе с оценками дней, как в игре.
+- Удаление и перемещение жителей повторяют игру: снаряжение удалённого жителя возвращается на склад, беременность сохраняется без отца, пара без ребёнка распадается, когда один из пары уходит из комнаты.
 
 ### Added
 
@@ -38,5 +39,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [Sem
 - Every section of the website has its own address, for example /en/vault/rooms.
 - Help inside the desktop version; rooms on the vault map can be moved with the keyboard (Alt and the arrow keys).
 - Daily vault report: the week rating follows the day ratings the way the game computes it.
+- Deleting and moving dwellers follows the game: a deleted dweller's gear goes back to storage, a pregnancy stays without the father, a couple without a baby breaks up when one of them leaves the room.
 
 [1.0.0]: https://github.com/Mahiron-hq/ShelterSave-Studio/releases/tag/v1.0.0

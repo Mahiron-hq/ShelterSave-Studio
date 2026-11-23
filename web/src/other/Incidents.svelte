@@ -85,11 +85,9 @@
   <div class="start">
     <Pick label={app.t("o.incidentPickRoom")} value={pickRoom === null ? null : String(pickRoom)} placeholder={app.t("o.incidentPickRoom")} items={candidates} onchange={(v) => (pickRoom = Number(v))} />
     <Seg label={app.t("o.incidentStart")} value={pickKind} options={c.roomIncidents.map((m) => ({ value: m, label: core().incidentName(m) }))} onchange={(v) => (pickKind = v)} />
-    <span class="row-wrap" title={app.t("o.incidentStrengthHelp")}>
-      {app.t("o.incidentStrength")}
-      <NumPick value={strength} label={app.t("o.incidentStrength")} lo={10} hi={100} slider={[10, 100]} oncommit={(v) => (strength = v)} />
-      <span class="muted">%</span>
-    </span>
+    <Row label={app.t("o.incidentStrength")} help={app.t("o.incidentStrengthHelp")} unit="%">
+          <NumPick value={strength} label={app.t("o.incidentStrength")} lo={10} hi={100} slider={[10, 100]} oncommit={(v) => (strength = v)} />
+        </Row>
     <button
       type="button"
       disabled={pickRoom === null}

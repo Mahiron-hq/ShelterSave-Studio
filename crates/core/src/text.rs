@@ -119,6 +119,7 @@ impl Tx {
             ActionError::Rule(RuleError::RoomOverlap) => self.t("aerr.roomOverlap"),
             ActionError::Rule(RuleError::RoomDisconnected) => self.t("aerr.roomDisconnected"),
             ActionError::Rule(RuleError::RoomBusy) => self.t("aerr.roomBusy"),
+            ActionError::Rule(RuleError::DwellerAway) => self.t("aerr.dwellerAway"),
             ActionError::Rule(RuleError::RoomFixed) => self.t("aerr.roomFixed"),
             ActionError::Rule(RuleError::RoomUnique) => self.t("aerr.roomUnique"),
             ActionError::Rule(RuleError::RoomLocked) => self.t("aerr.roomLocked"),

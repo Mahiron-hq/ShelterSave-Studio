@@ -191,13 +191,19 @@ fn summary(app: &mut App, ui: &mut egui::Ui) {
     }
     panel(ui, |ui| {
         ui.label(RichText::new(app.t("save.summary")).font(style::bold(16.0)));
+        // Names take the label column of field rows, so the values line up with them.
+        let gap = ui.spacing().item_spacing.x;
+        let name_w = 8.0 + crate::widgets::LABEL_COL.min(ui.available_width() * 0.4);
         egui::Grid::new("summary")
             .num_columns(2)
-            .spacing([24.0, 6.0])
+            .spacing([gap, 6.0])
             .striped(true)
             .show(ui, |ui| {
                 for (k, v) in rows.iter().chain(res.iter()) {
-                    ui.label(RichText::new(k).color(style::colors(ui.ctx()).muted));
+                    crate::widgets::cell(ui, name_w, egui::Align::Min, |ui| {
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(k).color(style::colors(ui.ctx()).muted));
+                    });
                     ui.label(RichText::new(v).font(style::mono(13.0)));
                     ui.end_row();
                 }

@@ -34,11 +34,9 @@
         <p class="danger"><Icon name="alert" /> {incName(mode)}</p>
         {#if typeof dmg === "number" && c.roomIncidents.includes(mode)}
           {@const pct = Math.min(100, Math.max(1, Math.round((dmg / max) * 100)))}
-          <span class="row-wrap">
-            {app.t("o.incidentStrength")}
-            <NumPick value={pct} label={app.t("o.incidentStrength")} lo={1} hi={100} slider={[1, 100]} oncommit={(v) => app.act({ action: "setIncidentStrength", room: id, value: v / 100 })} />
-            <span class="muted">%</span>
-          </span>
+          <Row label={app.t("o.incidentStrength")} help={app.t("o.incidentStrengthHelp")} unit="%">
+          <NumPick value={pct} label={app.t("o.incidentStrength")} lo={1} hi={100} slider={[1, 100]} oncommit={(v) => app.act({ action: "setIncidentStrength", room: id, value: v / 100 })} />
+        </Row>
         {/if}
         <button type="button" title={app.t("o.incidentFinishHelp")} onclick={() => app.act({ action: "finishEmergency" })}>
           <Icon name="check" /> {app.t("o.incidentFinish")}
@@ -47,11 +45,9 @@
         <p class="muted small">{app.t("room.incidentBusy")}</p>
       {:else}
         <Seg label={app.t("room.incident")} value={kind} options={c.roomIncidents.map((m) => ({ value: m, label: incName(m) }))} onchange={(v) => (kind = v)} />
-        <span class="row-wrap" title={app.t("o.incidentStrengthHelp")}>
-          {app.t("o.incidentStrength")}
+        <Row label={app.t("o.incidentStrength")} help={app.t("o.incidentStrengthHelp")} unit="%">
           <NumPick value={strength} label={app.t("o.incidentStrength")} lo={10} hi={100} slider={[10, 100]} oncommit={(v) => (strength = v)} />
-          <span class="muted">%</span>
-        </span>
+        </Row>
         <button
           type="button"
           title={app.t("o.incidentStartButtonHelp")}

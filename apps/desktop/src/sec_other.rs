@@ -359,6 +359,26 @@ fn quest_memory(app: &mut App, ui: &mut egui::Ui, r: &Value) {
     panel(ui, |ui| {
         title(ui, &app.t("o.questMemory"));
         note(ui, &app.t("o.questMemoryHelp"));
+        // Name, difficulty and date line up across all lists.
+        let split = |line: String| -> (String, String) {
+            line.split_once("  ·  ")
+                .map_or((line.clone(), String::new()), |(a, b)| {
+                    (a.to_string(), b.to_string())
+                })
+        };
+        let body = egui::TextStyle::Body.resolve(ui.style());
+        let (mut name_w, mut diff_w) = (0.0_f32, 0.0_f32);
+        for (_, path) in QUEST_MEMORY {
+            for e in vault::arr(r, &path) {
+                if let Some(name) = vault::text(e, &["questName"]) {
+                    let (n, d) = split(quest_line(app, &name));
+                    name_w = name_w.max(widgets::text_width(ui, &n, body.clone()));
+                    diff_w = diff_w.max(widgets::text_width(ui, &d, body.clone()));
+                }
+            }
+        }
+        let name_w = (name_w + 4.0).min((ui.available_width() * 0.5).max(120.0));
+        let diff_w = diff_w + 4.0;
         for (key, path) in QUEST_MEMORY {
             let list = vault::arr(r, &path);
             if list.is_empty() {
@@ -375,11 +395,17 @@ fn quest_memory(app: &mut App, ui: &mut egui::Ui, r: &Value) {
                 let Some(name) = vault::text(e, &["questName"]) else {
                     continue;
                 };
-                ui.horizontal_wrapped(|ui| {
+                let (n, diff) = split(quest_line(app, &name));
+                ui.horizontal(|ui| {
                     if crate::app::small_icon(ui, icons::X, &app.t("o.qmForget")).clicked() {
                         forget = Some((key.to_string(), name.clone()));
                     }
-                    ui.label(quest_line(app, &name));
+                    widgets::cell(ui, name_w, egui::Align::Min, |ui| {
+                        ui.add(egui::Label::new(&n).truncate());
+                    });
+                    widgets::cell(ui, diff_w, egui::Align::Min, |ui| {
+                        ui.label(&diff);
+                    });
                     if let Some(d) = vault::text(e, &["startDate"]) {
                         ui.label(RichText::new(game_date(app, &d)).small().color(c.muted));
                     }
@@ -563,21 +589,55 @@ fn quest_list(app: &mut App, ui: &mut egui::Ui, r: &Value) {
         }
         let tip = app.t("o.questToggleHelp");
         let expert = app.expert();
+        // Name and difficulty in their own columns.
+        let rows: Vec<(String, String, String, bool)> = rows
+            .into_iter()
+            .map(|(id, line, done)| {
+                let (name, diff) = line
+                    .split_once("  ·  ")
+                    .map_or((line.clone(), String::new()), |(a, b)| {
+                        (a.to_string(), b.to_string())
+                    });
+                (id, name, diff, done)
+            })
+            .collect();
+        let sp = ui.spacing();
+        let tick = sp.icon_width + sp.icon_spacing + sp.button_padding.x * 2.0;
+        let body = egui::TextStyle::Body.resolve(ui.style());
+        let name_w = (rows
+            .iter()
+            .map(|r| widgets::text_width(ui, &r.1, body.clone()))
+            .fold(0.0_f32, f32::max)
+            + tick
+            + 4.0)
+            .min((ui.available_width() * 0.6).max(120.0));
         egui::ScrollArea::vertical()
             .id_salt("quest_rows")
             .min_scrolled_height(260.0)
             .max_height(420.0)
             .show_rows(ui, 26.0, rows.len(), |ui, range| {
-                for (id, name, is_done) in &rows[range] {
+                for (id, name, diff, is_done) in &rows[range] {
                     let mut v = *is_done;
-                    let resp = ui.checkbox(&mut v, name).on_hover_text(if expert {
-                        id.clone()
-                    } else {
-                        tip.clone()
+                    ui.horizontal(|ui| {
+                        let resp = widgets::cell(ui, name_w, egui::Align::Min, |ui| {
+                            ui.checkbox(&mut v, name.as_str())
+                        })
+                        .on_hover_text(if expert {
+                            id.clone()
+                        } else {
+                            tip.clone()
+                        });
+                        if resp.changed() {
+                            toggle = Some((id.clone(), v));
+                        }
+                        if !diff.is_empty() {
+                            ui.label(
+                                RichText::new(diff)
+                                    .small()
+                                    .color(style::colors(ui.ctx()).muted),
+                            );
+                        }
                     });
-                    if resp.changed() {
-                        toggle = Some((id.clone(), v));
-                    }
                 }
             });
     });
@@ -847,8 +907,8 @@ pub fn room_incident(app: &mut App, ui: &mut egui::Ui, root: &Value, room: &Valu
             .filter(|_| ROOM_INCIDENTS.contains(&mode))
         {
             let pct = (dmg / max * 100.0).round().clamp(1.0, 100.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(app.t("o.incidentStrength"));
+            let (l, h) = (app.t("o.incidentStrength"), app.t("o.incidentStrengthHelp"));
+            widgets::plain_row(ui, &l, &h, |ui| {
                 let key = format!("room_inc_strength:{id}");
                 if let Some(v) =
                     widgets::pick_number(app, ui, &key, pct, (1.0, 100.0), Some((1.0, 100.0)), true)
@@ -902,9 +962,8 @@ pub fn room_incident(app: &mut App, ui: &mut egui::Ui, root: &Value, room: &Valu
             }
         }
     });
-    ui.horizontal_wrapped(|ui| {
-        ui.label(app.t("o.incidentStrength"))
-            .on_hover_text(app.t("o.incidentStrengthHelp"));
+    let (l, h) = (app.t("o.incidentStrength"), app.t("o.incidentStrengthHelp"));
+    widgets::plain_row(ui, &l, &h, |ui| {
         if let Some(v) = widgets::pick_number(
             app,
             ui,

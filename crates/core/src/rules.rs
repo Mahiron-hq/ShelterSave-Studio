@@ -73,6 +73,8 @@ pub enum RuleError {
     RoomSize,
     /// The outfit has no version for the dweller's gender.
     OutfitGender,
+    /// The dweller is in the wasteland or on a quest.
+    DwellerAway,
 }
 
 impl std::fmt::Display for RuleError {
