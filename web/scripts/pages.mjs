@@ -8,6 +8,36 @@ const SITE = process.env.SITE_URL ?? "https://shelter.mahiron.online"
 const VERSION = JSON.parse(readFileSync(join(web, "package.json"), "utf8")).version
 const REPO = "https://github.com/Mahiron-hq/ShelterSave-Studio"
 const LANGS = ["en", "ru"]
+const INDEXNOW_KEY = "094bd7d7560ecc07b80a67aad57d698f"
+const AUTHOR = {
+  "@type": "Person",
+  "@id": `${SITE}/#author`,
+  name: "Lev Burmistrov",
+  alternateName: "Mahiron-hq",
+  url: "https://github.com/Mahiron-hq",
+}
+const CRAWLERS = [
+  "Googlebot",
+  "Google-Extended",
+  "Bingbot",
+  "YandexBot",
+  "DuckDuckBot",
+  "Applebot",
+  "Applebot-Extended",
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "ClaudeBot",
+  "Claude-SearchBot",
+  "Claude-User",
+  "PerplexityBot",
+  "Perplexity-User",
+  "CCBot",
+  "Amazonbot",
+  "Meta-ExternalAgent",
+  "MistralAI-User",
+  "*",
+]
 
 const strings = Object.fromEntries(LANGS.map((l) => [l, JSON.parse(readFileSync(join(root, "i18n", `${l}.json`), "utf8"))]))
 const t = (lang, key) => strings[lang][key] ?? key
@@ -99,6 +129,49 @@ function alternates(path) {
   ].join("\n    ")
 }
 
+function social(lang, path, title, description) {
+  const other = lang === "ru" ? "en" : "ru"
+  const locale = (l) => (l === "ru" ? "ru_RU" : "en_US")
+  return [
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:site_name" content="ShelterSave-Studio">`,
+    `<meta property="og:title" content="${esc(title)}">`,
+    `<meta property="og:description" content="${esc(description)}">`,
+    `<meta property="og:url" content="${SITE}/${lang}/${path}">`,
+    `<meta property="og:locale" content="${locale(lang)}">`,
+    `<meta property="og:locale:alternate" content="${locale(other)}">`,
+    `<meta property="og:image" content="${SITE}/og-image.png">`,
+    `<meta property="og:image:type" content="image/png">`,
+    `<meta property="og:image:width" content="1200">`,
+    `<meta property="og:image:height" content="630">`,
+    `<meta property="og:image:alt" content="${esc(t(lang, "page.editorTitle"))}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+  ].join("\n    ")
+}
+
+function jsonLd(data) {
+  const json = JSON.stringify({ "@context": "https://schema.org", ...data }).replace(/</g, "\\u003c")
+  return `<script type="application/ld+json">${json}</script>`
+}
+
+function appData(lang, type, extra) {
+  return {
+    "@type": type,
+    name: "ShelterSave-Studio",
+    description: t(lang, type === "WebApplication" ? "page.editorDesc" : "page.desktopDesc"),
+    inLanguage: lang,
+    applicationCategory: "UtilitiesApplication",
+    softwareVersion: VERSION,
+    isAccessibleForFree: true,
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    license: "https://www.gnu.org/licenses/gpl-3.0.html",
+    author: { "@id": `${SITE}/#author` },
+    sameAs: [REPO],
+    image: `${SITE}/og-image.png`,
+    ...extra,
+  }
+}
+
 function header(lang, current) {
   const other = lang === "ru" ? "en" : "ru"
   const nav = [
@@ -124,7 +197,7 @@ function footer(lang) {
 </footer>`
 }
 
-function page(lang, path, title, description, body, { current = path, noindex = false } = {}) {
+function page(lang, path, title, description, body, { current = path, noindex = false, data = null } = {}) {
   return `<!doctype html>
 <html lang="${lang}">
   <head>
@@ -132,7 +205,7 @@ function page(lang, path, title, description, body, { current = path, noindex = 
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${esc(title)}</title>
     <meta name="description" content="${esc(description)}">
-    ${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="${SITE}/${lang}/${path}">\n    ${alternates(path)}`}
+    ${noindex ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="${SITE}/${lang}/${path}">\n    ${alternates(path)}\n    ${social(lang, path, title, description)}`}${data ? `\n    ${jsonLd(data)}` : ""}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/assets/${appCss}">
     <link rel="stylesheet" href="/assets/site.css">
@@ -156,20 +229,44 @@ function write(rel, html) {
   writeFileSync(file, html)
 }
 
-// Editor pages: the Vite shell with the language, texts and a no-script explanation.
+// Editor pages: the Vite shell with the language, texts and a description the app replaces on start.
 const shell = readFileSync(join(dist, "index.html"), "utf8")
 for (const lang of LANGS) {
+  const title = t(lang, "page.editorTitle")
+  const description = t(lang, "page.editorDesc")
+  const data = {
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${SITE}/#website`,
+        url: `${SITE}/`,
+        name: "ShelterSave-Studio",
+        inLanguage: LANGS,
+        publisher: { "@id": `${SITE}/#author` },
+      },
+      appData(lang, "WebApplication", {
+        url: `${SITE}/${lang}/`,
+        operatingSystem: "Any",
+        browserRequirements: "Requires JavaScript and WebAssembly",
+      }),
+      AUTHOR,
+    ],
+  }
   const head = [
-    `<title>${esc(t(lang, "page.editorTitle"))}</title>`,
-    `<meta name="description" content="${esc(t(lang, "page.editorDesc"))}">`,
+    `<title>${esc(title)}</title>`,
+    `<meta name="description" content="${esc(description)}">`,
     `<link rel="canonical" href="${SITE}/${lang}/">`,
     alternates(""),
+    social(lang, "", title, description),
+    `<link rel="stylesheet" href="/assets/site.css">`,
+    jsonLd(data),
   ].join("\n    ")
-  const noscript = `<noscript><div class="doc-main"><h1>ShelterSave-Studio</h1><p>${esc(t(lang, "page.noscript"))}</p><p><a href="/${lang}/help/">${esc(t(lang, "page.help"))}</a> · <a href="/${lang}/desktop/">${esc(t(lang, "page.desktop"))}</a> · <a href="/${lang}/privacy/">${esc(t(lang, "page.privacy"))}</a></p></div></noscript>`
+  const intro = markdown(readFileSync(join(web, "pages", `intro.${lang}.md`), "utf8"))
+  const noscript = `<noscript><p>${esc(t(lang, "page.noscript"))}</p></noscript>`
   const html = shell
     .replace('<html lang="en">', `<html lang="${lang}">`)
     .replace(/<title>[^<]*<\/title>/, head)
-    .replace('<div id="app"></div>', `<div id="app"></div>\n    ${noscript}`)
+    .replace('<div id="app"></div>', `<div id="app"><main class="doc-main">\n${intro}\n${noscript}\n</main></div>`)
   write(`${lang}/index.html`, html)
 }
 rmSync(join(dist, "index.html"))
@@ -180,7 +277,20 @@ for (const lang of LANGS) {
     if (!existsSync(src)) throw new Error(`missing ${src}`)
     const md = readFileSync(src, "utf8")
     const title = `${t(lang, p.key)} – ShelterSave-Studio`
-    write(`${lang}/${p.slug}/index.html`, page(lang, `${p.slug}/`, title, t(lang, `${p.key}Desc`), markdown(md)))
+    const data =
+      p.slug === "desktop"
+        ? {
+            "@graph": [
+              appData(lang, "SoftwareApplication", {
+                url: `${SITE}/${lang}/desktop/`,
+                operatingSystem: "Windows 10, Windows 11, Linux, macOS",
+                downloadUrl: `${REPO}/releases/latest`,
+              }),
+              AUTHOR,
+            ],
+          }
+        : null
+    write(`${lang}/${p.slug}/index.html`, page(lang, `${p.slug}/`, title, t(lang, `${p.key}Desc`), markdown(md), { data }))
   }
   const nf = markdown(readFileSync(join(web, "pages", `404.${lang}.md`), "utf8"))
   write(`${lang}/404.html`, page(lang, "", `${t(lang, "page.404")} – ShelterSave-Studio`, t(lang, "page.404"), nf, { current: "", noindex: true }))
@@ -200,7 +310,38 @@ ${urls
 </urlset>
 `
 write("sitemap.xml", sitemap)
-write("robots.txt", `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${SITE}/sitemap.xml\n`)
+write(
+  "robots.txt",
+  `${CRAWLERS.map((c) => `User-agent: ${c}`).join("\n")}\nAllow: /\nDisallow: /api/\n\nSitemap: ${SITE}/sitemap.xml\n`,
+)
+write(`${INDEXNOW_KEY}.txt`, INDEXNOW_KEY)
+
+const llmsLinks = (lang) =>
+  [["", "page.editor", "page.editorDesc"], ...PAGES.map((p) => [`${p.slug}/`, p.key, `${p.key}Desc`])]
+    .map(([u, k, d]) => `- [${t(lang, k)}](${SITE}/${lang}/${u}): ${t(lang, d)}`)
+    .join("\n")
+write(
+  "llms.txt",
+  `# ShelterSave-Studio
+
+> ${t("en", "page.editorDesc")} Also available as a desktop program for Windows, Linux and macOS. GPL-3.0, author Lev Burmistrov (Mahiron-hq).
+
+ShelterSave-Studio edits Fallout Shelter save files (Vault1.sav, Vault2.sav, Vault3.sav): resources, storage, rooms and the vault map, dwellers, pets, quests, objectives, achievements, wasteland teams, incidents and timers. Its rules come from the game's own data and code (Fallout Shelter 2.7), and an integrity check finds problems that make the game crash or hang. The website decrypts and edits the file in the browser and never uploads it. It is an independent project, not affiliated with Bethesda Softworks.
+
+## English
+
+${llmsLinks("en")}
+
+## Русский
+
+${llmsLinks("ru")}
+
+## Source
+
+- [GitHub repository](${REPO}): source code, README, changelog
+- [Releases](${REPO}/releases/latest): desktop builds with SHA-256 checksums
+`,
+)
 const expires = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, ".000Z")
 write(
   ".well-known/security.txt",
