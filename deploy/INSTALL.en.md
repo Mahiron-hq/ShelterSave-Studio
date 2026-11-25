@@ -40,9 +40,18 @@ systemd creates `/var/lib/shelter-site` by itself. Both services run as the `she
 
 ## 4. nginx
 
-1. Copy `nginx.conf` to `/etc/nginx/sites-available/shelter` and set your subdomain and certificate paths.
-2. Enable the site: `sudo ln -s /etc/nginx/sites-available/shelter /etc/nginx/sites-enabled/`.
-3. Check and apply: `sudo nginx -t && sudo systemctl reload nginx`.
+The subdomain must already point to the server. Get the certificate before enabling the site: without it `nginx -t` fails.
+
+1. Get the certificate. If certbot is not set up on the server yet:
+   ```
+   sudo apt install certbot python3-certbot-nginx
+   sudo certbot certonly --nginx -d shelter.mahiron.online
+   ```
+   If certbot on the server already uses the webroot `/var/www/acme`, first enable only the port 80 `server` block from the sample, then run `sudo certbot certonly --webroot -w /var/www/acme -d shelter.mahiron.online`.
+2. Copy `nginx.conf` to `/etc/nginx/sites-available/shelter` and set your subdomain. If port 8080 is taken on the server, set another one in the site's `listen` setting and in both `proxy_pass` lines.
+3. Enable the site: `sudo ln -s /etc/nginx/sites-available/shelter /etc/nginx/sites-enabled/`.
+4. Check and apply: `sudo nginx -t && sudo systemctl reload nginx`.
+5. Check certificate renewal: `sudo certbot renew --dry-run --cert-name shelter.mahiron.online`. The sample's port 80 block serves Let's Encrypt challenge files from `/var/www/acme`, so webroot renewal works too.
 
 In the sample, the access log writes no IP addresses and no User-Agent strings (format `shelter_anon`), and `/api/hit` is limited in rate and size. The application sends the security headers (CSP, HSTS and others) itself.
 

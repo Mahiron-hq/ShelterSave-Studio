@@ -40,9 +40,18 @@ systemctl status shelter-site shelter-watch
 
 ## 4. nginx
 
-1. Скопируйте `nginx.conf` в `/etc/nginx/sites-available/shelter`, укажите поддомен и пути к сертификату.
-2. Включите сайт: `sudo ln -s /etc/nginx/sites-available/shelter /etc/nginx/sites-enabled/`.
-3. Проверьте и примените: `sudo nginx -t && sudo systemctl reload nginx`.
+Поддомен уже должен указывать на сервер. Сертификат получается до включения сайта: без него `nginx -t` не пройдёт.
+
+1. Получите сертификат. Если certbot на сервере ещё не настроен:
+   ```
+   sudo apt install certbot python3-certbot-nginx
+   sudo certbot certonly --nginx -d shelter.mahiron.online
+   ```
+   Если на сервере certbot уже работает через webroot `/var/www/acme`, сначала включите только блок `server` для порта 80 из образца, затем выполните `sudo certbot certonly --webroot -w /var/www/acme -d shelter.mahiron.online`.
+2. Скопируйте `nginx.conf` в `/etc/nginx/sites-available/shelter` и укажите поддомен. Если порт 8080 на сервере занят, укажите другой в `listen` конфигурации сайта и в обоих `proxy_pass`.
+3. Включите сайт: `sudo ln -s /etc/nginx/sites-available/shelter /etc/nginx/sites-enabled/`.
+4. Проверьте и примените: `sudo nginx -t && sudo systemctl reload nginx`.
+5. Проверьте продление сертификата: `sudo certbot renew --dry-run --cert-name shelter.mahiron.online`. Блок для порта 80 в образце отдаёт проверочные файлы Let's Encrypt из `/var/www/acme`, поэтому продление через webroot тоже работает.
 
 В образце журнал доступа не пишет IP-адреса и строки User-Agent (формат `shelter_anon`). Запросы к `/api/hit` ограничены по частоте и размеру. Заголовки безопасности (CSP, HSTS и другие) отдаёт само приложение.
 
